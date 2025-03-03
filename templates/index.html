@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini Chatbot</title>
+    <title>Gemini Chatbot & Summarizer</title>
     <!-- MathJax Configuration -->
     <script>
         MathJax = {
@@ -23,9 +23,8 @@
     <!-- Marked Library (Markdown Parser) -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
-
     <style>
-        /* General Styling */
+ /* General Styling */
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #f4f4f4;
@@ -34,20 +33,34 @@
             padding: 0;
             display: flex;
             justify-content: center;
-            align-items: center;
+            align-items: flex-start; /* Align items to the top */
             min-height: 100vh;
         }
 
-        #chat-container {
+        #main-container {
+            display: flex;
             width: 90%;
-            max-width: 600px;
+            max-width: 1200px; /* Wider max-width for two columns */
+            margin-top: 20px; /* Add some top margin */
+        }
+        #chat-column{
+           flex: 1; /* Both columns take equal width initially */
+            margin-right: 20px; /* Spacing between columns */
+
+        }
+        #summarizer-column{
+            flex: 1; /* Both columns take equal width initially */
+
+        }
+
+        #chat-container, #summarizer-container {
             background-color: white;
             border-radius: 10px;
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
             overflow: hidden;
             display: flex;
             flex-direction: column;
-            height: 80vh;
+            height: 80vh; /* Consistent height */
         }
 
         #chat-log {
@@ -57,21 +70,21 @@
             scrollbar-width: thin;
             scrollbar-color: #888 #f1f1f1;
         }
-
-        #chat-log::-webkit-scrollbar {
+        #chat-log::-webkit-scrollbar{
             width: 8px;
         }
-        #chat-log::-webkit-scrollbar-track {
+        #chat-log::-webkit-scrollbar-track{
             background: #f1f1f1;
             border-radius: 10px;
         }
-        #chat-log::-webkit-scrollbar-thumb {
+        #chat-log::-webkit-scrollbar-thumb{
             background: #888;
             border-radius: 10px;
         }
-        #chat-log::-webkit-scrollbar-thumb:hover {
+        #chat-log::-webkit-scrollbar-thumb:hover{
             background: #555;
         }
+
 
         /* Message Styling */
         .message {
@@ -101,88 +114,237 @@
         }
 
         /* Input Area */
-        #input-container {
+        #chat-input-container, #summarizer-input-container { /* Style both input areas */
             display: flex;
             padding: 10px;
-            border-top: 1px solid #ddd;
-            background-color: #f8f9fa;
+            background-color: #f8f9fa;  /* Removed border-top */
         }
-
-        #message-input {
+        /* Style both textareas */
+        #message-input, #summarizer-input {
             flex-grow: 1;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 5px;
             resize: vertical;
-            min-height: 40px;
             font-size: 16px;
             margin-right: 10px;
-            box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
         }
-        #message-input:focus {
+
+        #message-input {
+            min-height: 40px; /* Keep min-height for chat input */
+        }
+
+        /* Constrain the summarizer input height */
+        #summarizer-input {
+            max-height: 200px;  /*  CRUCIAL: Set a maximum height */
+            overflow-y: auto;    /*  Enable vertical scrollbar */
+            scrollbar-width: thin;  /* Firefox scrollbar styling */
+            scrollbar-color: #888 #f1f1f1; /* Firefox scrollbar styling */
+        }
+
+        /* WebKit scrollbar styling for summarizer input */
+        #summarizer-input::-webkit-scrollbar {
+            width: 8px;
+        }
+        #summarizer-input::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        #summarizer-input::-webkit-scrollbar-thumb {
+            background: #888;
+             border-radius: 10px;
+        }
+        #summarizer-input::-webkit-scrollbar-thumb:hover {
+             background: #555;
+        }
+
+        #message-input:focus, #summarizer-input:focus {
             outline: none;
             border-color: #007bff;
             box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
         }
-
-        #send-button {
+        /* Style the buttons*/
+        #send-button, #summarize-button, #rephrase-button {
             padding: 10px 15px;
-            background-color: #28a745;
             color: white;
             border: none;
             border-radius: 5px;
             cursor: pointer;
             font-size: 16px;
-             transition: background-color 0.3s ease;
+            transition: background-color 0.3s ease;
         }
+
+        #send-button {
+             background-color: #28a745; /* Green for send */
+        }
+        #summarize-button {
+             background-color: #007bff; /* Blue for Summarize */
+        }
+         #rephrase-button {
+            background-color: #17a2b8; /* Teal for Rephrase */
+            margin-left: 10px; /* Add some space between buttons */
+        }
+
         #send-button:hover {
             background-color: #218838;
         }
-        #send-button:disabled {
+        #summarize-button:hover {
+            background-color: #0056b3;
+        }
+        #rephrase-button:hover {
+            background-color: #138496;
+        }
+
+        #send-button:disabled, #summarize-button:disabled, #rephrase-button:disabled {
             background-color: #6c757d;
             cursor: not-allowed;
         }
 
         /* Loading Indicator */
-        #loading-indicator {
+       #chat-loading-indicator, #summarizer-loading-indicator { /* Style both indicators */
             display: none;
             margin-left: 10px;
             animation: spin 1s linear infinite;
             align-self: center;
         }
-
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
 
+        /* Summarizer Output Area */
+        #summary-output {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+            scrollbar-width: thin; /* For Firefox */
+            scrollbar-color: #888 #f1f1f1; /* For Firefox */
+
+        }
+        #summary-output::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #summary-output::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+
+        #summary-output::-webkit-scrollbar-thumb {
+            background: #888;
+             border-radius: 10px;
+        }
+
+        #summary-output::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        /* Summarizer specific adjustments */
+        #summarizer-container {
+            display: flex;
+            flex-direction: column; /* Stack input and output vertically */
+        }
+
+        #summarizer-input-container {
+            border-bottom: 1px solid #ddd; /* Add a separator */
+            margin-bottom: 0px;
+             align-items: center; /* Vertically center items */
+        }
+        .button-group {
+            display: flex; /* Arrange buttons horizontally */
+        }
+
+
          /* Responsive adjustments for smaller screens */
         @media (max-width: 768px) {
-            #chat-container {
+           #main-container {
+                flex-direction: column; /* Stack columns on small screens */
                 width: 95%;
+            }
+            #chat-column, #summarizer-column {
+                margin-right: 0; /* Remove margin on small screens */
+                margin-bottom: 20px; /* Add spacing between stacked columns */
+            }
+            #chat-container, #summarizer-container{
                 border-radius: 0;
                 box-shadow: none;
-                height: 90vh;
+                height: auto; /*Allow auto height in mobile*/
             }
             .message {
                 max-width: 90%;
+            }
+             #summarizer-input {
+                max-height: 150px; /* Further reduce max-height on mobile */
             }
         }
     </style>
 </head>
 <body>
-    <div id="chat-container" role="main" aria-live="polite">
-        <div id="chat-log" role="log" aria-relevant="additions"></div>
-        <div id="input-container">
-            <textarea id="message-input" placeholder="Type your message..." aria-label="Message input"></textarea>
-            <button id="send-button" aria-label="Send message">Send</button>
-            <div id="loading-indicator">
-               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20Z" fill="currentColor"/>
-                    <path d="M12 4C9.8 4 7.8 4.9 6.3 6.3C4.9 7.8 4 9.8 4 12C4 14.2 4.9 16.2 6.3 17.7C7.8 19.1 9.8 20 12 20C14.2 20 16.2 19.1 17.7 17.7C19.1 16.2 20 14.2 20 12C20 9.8 19.1 7.8 17.7 6.3C16.2 4.9 14.2 4 12 4ZM12 18C8.69 18 6 15.31 6 12C6 8.69 8.69 6 12 6C15.31 6 18 8.69 18 12C18 15.31 15.31 18 12 18Z" fill="currentColor"/>
-                    <path d="M12 8C10.9 8 10 8.9 10 10V14C10 15.1 10.9 16 12 16C13.1 16 14 15.1 14 14V10C14 8.9 13.1 8 12 8Z" fill="currentColor"/>
-                </svg>
+    <div id="main-container">
+        <!-- Chat Column -->
+        <div id="chat-column">
+            <div id="chat-container" role="main" aria-live="polite">
+                <div id="chat-log" role="log" aria-relevant="additions"></div>
+                <div id="chat-input-container">
+                    <textarea id="message-input" placeholder="Type your message..." aria-label="Message input"></textarea>
+                    <button id="send-button" aria-label="Send message">Send</button>
+                    <div id="chat-loading-indicator">
+                        <!--  loading SVG -->
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20Z" fill="currentColor"/>
+                            <path d="M12 4C9.8 4 7.8 4.9 6.3 6.3C4.9 7.8 4 9.8 4 12C4 14.2 4.9 16.2 6.3 17.7C7.8 19.1 9.8 20 12 20C14.2 20 16.2 19.1 17.7 17.7C19.1 16.2 20 14.2 20 12C20 9.8 19.1 7.8 17.7 6.3C16.2 4.9 14.2 4 12 4ZM12 18C8.69 18 6 15.31 6 12C6 8.69 8.69 6 12 6C15.31 6 18 8.69 18 12C18 15.31 15.31 18 12 18Z" fill="currentColor"/>
+                            <path d="M12 8C10.9 8 10 8.9 10 10V14C10 15.1 10.9 16 12 16C13.1 16 14 15.1 14 14V10C14 8.9 13.1 8 12 8Z" fill="currentColor"/>
+                        </svg>
+                    </div>
+                </div>
             </div>
+        </div>
+
+        <!-- Summarizer Column -->
+        <div id="summarizer-column">
+          <div id="summarizer-container">
+            <!-- Input area is now ABOVE the output area -->
+            <div id="summarizer-input-container">
+              <textarea
+                id="summarizer-input"
+                placeholder="Paste large text here for summarization..."
+                aria-label="Text to summarize"
+              ></textarea>
+              <div class="button-group">
+                <button id="summarize-button" aria-label="Summarize text">
+                    Summarize
+                </button>
+                <button id="rephrase-button" aria-label="Rephrase text">
+                    Rephrase
+                </button>
+                </div>
+              <div id="summarizer-loading-indicator">
+                <!-- loading SVG -->
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20Z"
+                    fill="currentColor"
+                  />
+                  <path
+                    d="M12 4C9.8 4 7.8 4.9 6.3 6.3C4.9 7.8 4 9.8 4 12C4 14.2 4.9 16.2 6.3 17.7C7.8 19.1 9.8 20 12 20C14.2 20 16.2 19.1 17.7 17.7C19.1 16.2 20 14.2 20 12C20 9.8 19.1 7.8 17.7 6.3C16.2 4.9 14.2 4 12 4ZM12 18C8.69 18 6 15.31 6 12C6 8.69 8.69 6 12 6C15.31 6 18 8.69 18 12C18 15.31 15.31 18 12 18Z"
+                    fill="currentColor"
+                  />
+                  <path
+                    d="M12 8C10.9 8 10 8.9 10 10V14C10 15.1 10.9 16 12 16C13.1 16 14 15.1 14 14V10C14 8.9 13.1 8 12 8Z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </div>
+            </div>
+            <div id="summary-output" role="log" aria-live="polite"></div>
+          </div>
         </div>
     </div>
 
@@ -190,19 +352,25 @@
         const chatLog = document.getElementById('chat-log');
         const messageInput = document.getElementById('message-input');
         const sendButton = document.getElementById('send-button');
-        const loadingIndicator = document.getElementById('loading-indicator');
+        const chatLoadingIndicator = document.getElementById('chat-loading-indicator');
         let chatHistory = []; // Store chat history
+
+        const summaryOutput = document.getElementById('summary-output');
+        const summarizerInput = document.getElementById('summarizer-input');
+        const summarizeButton = document.getElementById('summarize-button');
+        const rephraseButton = document.getElementById('rephrase-button'); // Rephrase button
+        const summarizerLoadingIndicator = document.getElementById('summarizer-loading-indicator');
+
 
         async function sendMessage() {
             const message = messageInput.value;
             if (!message.trim()) return;
 
-            // No need to pre-process user input with marked, as it's plain text
             appendMessage("You: " + message, 'user-message');
             messageInput.value = '';
             messageInput.style.height = '40px';
             sendButton.disabled = true;
-            showLoadingIndicator();
+            showLoadingIndicator(chatLoadingIndicator);
 
             try {
                 const response = await fetch('/chat', {
@@ -218,7 +386,6 @@
                 if (data.error) {
                     appendMessage(`Error: ${data.error}`, 'error-message');
                 } else {
-                     // Process the bot's response with marked *before* appending
                     const parsedResponse = marked.parse(data.response);
                     appendMessage("Bot: " + parsedResponse, 'bot-message');
                     chatHistory = data.history;
@@ -227,29 +394,120 @@
             } catch (error) {
                 appendMessage('Network error. Please check your connection.', 'error-message');
             } finally {
-                hideLoadingIndicator();
+                hideLoadingIndicator(chatLoadingIndicator);
                 sendButton.disabled = false;
             }
 
             chatLog.scrollTop = chatLog.scrollHeight;
         }
 
+
+       async function summarizeText() {
+            const textToSummarize = summarizerInput.value;
+            if (!textToSummarize.trim()) return;
+
+            summarizerInput.value = '';
+            summarizeButton.disabled = true;
+            rephraseButton.disabled = true;
+            showLoadingIndicator(summarizerLoadingIndicator);
+
+            try {
+                const response = await fetch('/summarize', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ text: textToSummarize })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    appendSummary( `Error: ${data.error}`, 'error-message');
+                } else {
+                    // Parse with Marked *before* appending
+                    const parsedSummary = marked.parse(data.summary);
+                    appendSummary(parsedSummary, 'bot-message');
+                    MathJax.typesetPromise();
+                }
+            } catch (error) {
+                appendSummary('Network error. Please check your connection.', 'error-message');
+            } finally {
+                hideLoadingIndicator(summarizerLoadingIndicator);
+                summarizeButton.disabled = false;
+                rephraseButton.disabled = false;
+            }
+            summaryOutput.scrollTop = summaryOutput.scrollHeight;
+        }
+
+        async function rephraseText() {
+            const textToRephrase = summarizerInput.value;
+            if (!textToRephrase.trim()) return;
+
+            summarizerInput.value = '';
+            rephraseButton.disabled = true;
+            summarizeButton.disabled = true;
+            showLoadingIndicator(summarizerLoadingIndicator);
+
+            try {
+                const response = await fetch('/rephrase', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ text: textToRephrase })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    appendSummary(`Error: ${data.error}`, 'error-message');
+                } else {
+                    // Parse with Marked *before* appending
+                    const parsedRephrased = marked.parse(data.rephrased);
+                    appendSummary(parsedRephrased, 'bot-message');
+                    MathJax.typesetPromise();
+                }
+            } catch (error) {
+                appendSummary('Network error. Please check your connection.', 'error-message');
+            } finally {
+                hideLoadingIndicator(summarizerLoadingIndicator);
+                rephraseButton.disabled = false;
+                summarizeButton.disabled = false;
+
+            }
+            summaryOutput.scrollTop = summaryOutput.scrollHeight;
+        }
+
+
         function appendMessage(message, className) {
             const messageElement = document.createElement('div');
-            messageElement.innerHTML = message; 
+            messageElement.innerHTML = message;
             messageElement.classList.add('message', className);
             chatLog.appendChild(messageElement);
         }
 
-        function showLoadingIndicator() {
-            loadingIndicator.style.display = 'block';
+        // Updated: Function to append to the summarizer output
+        function appendSummary(message, className) {
+            const messageElement = document.createElement('div');
+            messageElement.innerHTML = message;  // No newline replacement needed
+            messageElement.classList.add('message', className); // Re-use message styles
+            summaryOutput.appendChild(messageElement);
         }
 
-        function hideLoadingIndicator() {
-            loadingIndicator.style.display = 'none';
+
+        function showLoadingIndicator(indicator) {
+            indicator.style.display = 'block';
+        }
+
+        function hideLoadingIndicator(indicator) {
+            indicator.style.display = 'none';
         }
 
         sendButton.addEventListener('click', sendMessage);
+        summarizeButton.addEventListener('click', summarizeText); // New event listener
+        rephraseButton.addEventListener('click', rephraseText);    // Rephrase button listener
+
 
         messageInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
@@ -257,10 +515,9 @@
                 sendMessage();
             }
         });
-
-        messageInput.addEventListener('input', () => {
-          messageInput.style.height = 'auto';
-          messageInput.style.height = messageInput.scrollHeight + 'px';
+          messageInput.addEventListener('input', () => {
+            messageInput.style.height = 'auto';
+            messageInput.style.height = messageInput.scrollHeight + 'px';
         });
 
     </script>
