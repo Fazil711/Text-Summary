@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gemini Chatbot & Summarizer</title>
-    <!-- MathJax Configuration -->
     <script>
         MathJax = {
             tex: {
@@ -18,13 +17,10 @@
             }
         };
     </script>
-    <!-- MathJax Library -->
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-    <!-- Marked Library (Markdown Parser) -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
     <style>
- /* General Styling */
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #f4f4f4;
@@ -33,23 +29,22 @@
             padding: 0;
             display: flex;
             justify-content: center;
-            align-items: flex-start; /* Align items to the top */
+            align-items: flex-start;
             min-height: 100vh;
         }
 
         #main-container {
             display: flex;
             width: 90%;
-            max-width: 1200px; /* Wider max-width for two columns */
-            margin-top: 20px; /* Add some top margin */
+            max-width: 1200px; 
+            margin-top: 20px; 
         }
         #chat-column{
-           flex: 1; /* Both columns take equal width initially */
-            margin-right: 20px; /* Spacing between columns */
-
+           flex: 1;
+            margin-right: 20px; 
         }
         #summarizer-column{
-            flex: 1; /* Both columns take equal width initially */
+            flex: 1; 
 
         }
 
@@ -60,7 +55,7 @@
             overflow: hidden;
             display: flex;
             flex-direction: column;
-            height: 80vh; /* Consistent height */
+            height: 80vh;
         }
 
         #chat-log {
@@ -86,7 +81,6 @@
         }
 
 
-        /* Message Styling */
         .message {
             margin-bottom: 15px;
             padding: 10px 15px;
@@ -113,13 +107,11 @@
             align-self: flex-start;
         }
 
-        /* Input Area */
-        #chat-input-container, #summarizer-input-container { /* Style both input areas */
+        #chat-input-container, #summarizer-input-container {
             display: flex;
             padding: 10px;
-            background-color: #f8f9fa;  /* Removed border-top */
+            background-color: #f8f9fa;  
         }
-        /* Style both textareas */
         #message-input, #summarizer-input {
             flex-grow: 1;
             padding: 10px;
@@ -132,18 +124,16 @@
         }
 
         #message-input {
-            min-height: 40px; /* Keep min-height for chat input */
+            min-height: 40px;
         }
 
-        /* Constrain the summarizer input height */
         #summarizer-input {
-            max-height: 200px;  /*  CRUCIAL: Set a maximum height */
-            overflow-y: auto;    /*  Enable vertical scrollbar */
-            scrollbar-width: thin;  /* Firefox scrollbar styling */
-            scrollbar-color: #888 #f1f1f1; /* Firefox scrollbar styling */
+            max-height: 200px; 
+            overflow-y: auto;   
+            scrollbar-width: thin;  
+            scrollbar-color: #888 #f1f1f1; 
         }
 
-        /* WebKit scrollbar styling for summarizer input */
         #summarizer-input::-webkit-scrollbar {
             width: 8px;
         }
@@ -164,7 +154,6 @@
             border-color: #007bff;
             box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
         }
-        /* Style the buttons*/
         #send-button, #summarize-button, #rephrase-button {
             padding: 10px 15px;
             color: white;
@@ -176,14 +165,14 @@
         }
 
         #send-button {
-             background-color: #28a745; /* Green for send */
+             background-color: #28a745; 
         }
         #summarize-button {
-             background-color: #007bff; /* Blue for Summarize */
+             background-color: #007bff; 
         }
          #rephrase-button {
-            background-color: #17a2b8; /* Teal for Rephrase */
-            margin-left: 10px; /* Add some space between buttons */
+            background-color: #17a2b8; 
+            margin-left: 10px; 
         }
 
         #send-button:hover {
@@ -201,7 +190,6 @@
             cursor: not-allowed;
         }
 
-        /* Loading Indicator */
        #chat-loading-indicator, #summarizer-loading-indicator { /* Style both indicators */
             display: none;
             margin-left: 10px;
@@ -213,13 +201,12 @@
             100% { transform: rotate(360deg); }
         }
 
-        /* Summarizer Output Area */
         #summary-output {
             flex-grow: 1;
             padding: 20px;
             overflow-y: auto;
-            scrollbar-width: thin; /* For Firefox */
-            scrollbar-color: #888 #f1f1f1; /* For Firefox */
+            scrollbar-width: thin;
+            scrollbar-color: #888 #f1f1f1; 
 
         }
         #summary-output::-webkit-scrollbar {
@@ -240,49 +227,46 @@
             background: #555;
         }
 
-        /* Summarizer specific adjustments */
         #summarizer-container {
             display: flex;
-            flex-direction: column; /* Stack input and output vertically */
+            flex-direction: column; 
         }
 
         #summarizer-input-container {
-            border-bottom: 1px solid #ddd; /* Add a separator */
+            border-bottom: 1px solid #ddd; 
             margin-bottom: 0px;
-             align-items: center; /* Vertically center items */
+             align-items: center;
         }
         .button-group {
-            display: flex; /* Arrange buttons horizontally */
+            display: flex; 
         }
 
 
-         /* Responsive adjustments for smaller screens */
         @media (max-width: 768px) {
            #main-container {
-                flex-direction: column; /* Stack columns on small screens */
+                flex-direction: column;
                 width: 95%;
             }
             #chat-column, #summarizer-column {
-                margin-right: 0; /* Remove margin on small screens */
-                margin-bottom: 20px; /* Add spacing between stacked columns */
+                margin-right: 0;
+                margin-bottom: 20px; 
             }
             #chat-container, #summarizer-container{
                 border-radius: 0;
                 box-shadow: none;
-                height: auto; /*Allow auto height in mobile*/
+                height: auto; 
             }
             .message {
                 max-width: 90%;
             }
              #summarizer-input {
-                max-height: 150px; /* Further reduce max-height on mobile */
+                max-height: 150px; 
             }
         }
     </style>
 </head>
 <body>
     <div id="main-container">
-        <!-- Chat Column -->
         <div id="chat-column">
             <div id="chat-container" role="main" aria-live="polite">
                 <div id="chat-log" role="log" aria-relevant="additions"></div>
@@ -290,7 +274,6 @@
                     <textarea id="message-input" placeholder="Type your message..." aria-label="Message input"></textarea>
                     <button id="send-button" aria-label="Send message">Send</button>
                     <div id="chat-loading-indicator">
-                        <!--  loading SVG -->
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20Z" fill="currentColor"/>
                             <path d="M12 4C9.8 4 7.8 4.9 6.3 6.3C4.9 7.8 4 9.8 4 12C4 14.2 4.9 16.2 6.3 17.7C7.8 19.1 9.8 20 12 20C14.2 20 16.2 19.1 17.7 17.7C19.1 16.2 20 14.2 20 12C20 9.8 19.1 7.8 17.7 6.3C16.2 4.9 14.2 4 12 4ZM12 18C8.69 18 6 15.31 6 12C6 8.69 8.69 6 12 6C15.31 6 18 8.69 18 12C18 15.31 15.31 18 12 18Z" fill="currentColor"/>
@@ -301,10 +284,8 @@
             </div>
         </div>
 
-        <!-- Summarizer Column -->
         <div id="summarizer-column">
           <div id="summarizer-container">
-            <!-- Input area is now ABOVE the output area -->
             <div id="summarizer-input-container">
               <textarea
                 id="summarizer-input"
@@ -320,7 +301,6 @@
                 </button>
                 </div>
               <div id="summarizer-loading-indicator">
-                <!-- loading SVG -->
                 <svg
                   width="20"
                   height="20"
@@ -353,7 +333,7 @@
         const messageInput = document.getElementById('message-input');
         const sendButton = document.getElementById('send-button');
         const chatLoadingIndicator = document.getElementById('chat-loading-indicator');
-        let chatHistory = []; // Store chat history
+        let chatHistory = []; 
 
         const summaryOutput = document.getElementById('summary-output');
         const summarizerInput = document.getElementById('summarizer-input');
@@ -389,7 +369,7 @@
                     const parsedResponse = marked.parse(data.response);
                     appendMessage("Bot: " + parsedResponse, 'bot-message');
                     chatHistory = data.history;
-                    MathJax.typesetPromise(); // Typeset after Markdown parsing
+                    MathJax.typesetPromise(); 
                 }
             } catch (error) {
                 appendMessage('Network error. Please check your connection.', 'error-message');
@@ -425,7 +405,6 @@
                 if (data.error) {
                     appendSummary( `Error: ${data.error}`, 'error-message');
                 } else {
-                    // Parse with Marked *before* appending
                     const parsedSummary = marked.parse(data.summary);
                     appendSummary(parsedSummary, 'bot-message');
                     MathJax.typesetPromise();
@@ -463,7 +442,6 @@
                 if (data.error) {
                     appendSummary(`Error: ${data.error}`, 'error-message');
                 } else {
-                    // Parse with Marked *before* appending
                     const parsedRephrased = marked.parse(data.rephrased);
                     appendSummary(parsedRephrased, 'bot-message');
                     MathJax.typesetPromise();
@@ -487,11 +465,11 @@
             chatLog.appendChild(messageElement);
         }
 
-        // Updated: Function to append to the summarizer output
+        
         function appendSummary(message, className) {
             const messageElement = document.createElement('div');
-            messageElement.innerHTML = message;  // No newline replacement needed
-            messageElement.classList.add('message', className); // Re-use message styles
+            messageElement.innerHTML = message;  
+            messageElement.classList.add('message', className); 
             summaryOutput.appendChild(messageElement);
         }
 
@@ -505,8 +483,8 @@
         }
 
         sendButton.addEventListener('click', sendMessage);
-        summarizeButton.addEventListener('click', summarizeText); // New event listener
-        rephraseButton.addEventListener('click', rephraseText);    // Rephrase button listener
+        summarizeButton.addEventListener('click', summarizeText); 
+        rephraseButton.addEventListener('click', rephraseText);    
 
 
         messageInput.addEventListener('keydown', (event) => {
