@@ -11,7 +11,6 @@ if not api_key:
 
 client = genai.Client(api_key=api_key)
 
-# Configuration 
 GENERATE_CONTENT_CONFIG = types.GenerateContentConfig(
     temperature=0.9,
     top_p=0.95,
@@ -66,15 +65,15 @@ def generate_response(user_input, chat_history=None):
 
 def generate_summary(text):
     """Generates a summary of the given text using Gemini."""
-    model = "gemini-2.0-flash"  # Or another suitable model
-    prompt = f"Summarize the following text:\n\n{text}" #A clear and concise prompt
+    model = "gemini-2.0-flash"  
+    prompt = f"Summarize the following text:\n\n{text}" 
     contents = [types.Content(role="user", parts=[types.Part.from_text(text=prompt)])]
 
     try:
         response_stream = client.models.generate_content_stream(
             model=model,
             contents=contents,
-            config=GENERATE_CONTENT_CONFIG,  # You can adjust config for summarization
+            config=GENERATE_CONTENT_CONFIG,  
         )
         full_summary = ""
         for chunk in response_stream:
@@ -85,18 +84,18 @@ def generate_summary(text):
         print(f"Error during summarization: {e}")
         return "Sorry, I couldn't summarize that text."
 
-# NEW: Rephrase function
+
 def generate_rephrase(text):
     """Rephrases the given text using Gemini."""
     model = "gemini-2.0-flash"
-    prompt = f"Rephrase the following text:\n\n{text}"  # Clear rephrase prompt
+    prompt = f"Rephrase the following text:\n\n{text}" 
     contents = [types.Content(role="user", parts=[types.Part.from_text(text=prompt)])]
 
     try:
         response_stream = client.models.generate_content_stream(
             model=model,
             contents=contents,
-            config=GENERATE_CONTENT_CONFIG,  # Consider adjusting config
+            config=GENERATE_CONTENT_CONFIG,  
         )
         full_rephrased = ""
         for chunk in response_stream:
