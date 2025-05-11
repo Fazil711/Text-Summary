@@ -103,33 +103,31 @@ pipeline {
                         echo Starting application...
                         set PORT=${env.APP_PORT}
                         
-                        echo --- Activating venv and checking python version ---
+                        echo --- Activating venv ---
                         call .\\venv\\Scripts\\activate.bat
-                        echo Python version from venv:
-                        python --version
-                        echo Which python:
-                        where python
                         
                         echo Starting python main.py on port %PORT%
                         
-                        REM **MODIFIED START COMMAND**
-                        REM We will create a temporary batch file to launch python with redirection,
-                        REM and then use 'start /B' to run that temporary batch file.
-                        echo .\\venv\\Scripts\\python.exe main.py > run_app.bat
-                        echo exit >> run_app.bat 
+                        REM Create a temporary batch file to launch python
+                        echo @echo off > run_app.bat
+                        echo .\\venv\\Scripts\\python.exe main.py >> run_app.bat
+                        echo exit /b 0 >> run_app.bat 
                         
-                        REM Now start the temporary batch file in the background.
-                        REM The output and error redirection will be handled by the OS when run_app.bat executes python.
-                        REM We'll redirect the output of run_app.bat itself to app.log
+                        REM Start the temporary batch file in the background, redirecting its output
                         start "GeminiApp" /B cmd /c "run_app.bat > app.log 2>&1"
                         
                         call .\\venv\\Scripts\\deactivate.bat
                         
-                        REM Add a small delay to see if app.log gets populated by the Python app
-                        echo Waiting for application to start and log...
-                        timeout /t 10 /nobreak > NUL
+                        REM **REMOVED TIMEOUT COMMAND**
+                        echo Application launch command issued. Waiting a few seconds for logs to appear...
+                        REM A more robust check would be to ping the app or check for a specific log message.
+                        REM For now, just a brief pause using a less problematic command if needed, or just proceed.
+                        REM If you still need a pause, try: ping -n 6 127.0.0.1 > NUL (pauses for 5 seconds)
 
                         echo --- Checking app.log ---
+                        REM Give a very short moment for the file system to catch up if the app started very quickly.
+                        ping -n 3 127.0.0.1 > NUL 
+
                         if exist app.log (
                             echo app.log found. Contents:
                             type app.log
