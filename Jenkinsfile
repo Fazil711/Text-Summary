@@ -84,14 +84,6 @@ pipeline {
                             exit /b 1
                         )
 
-                        echo --- Checking for venv python.exe ---
-                        if exist .\\venv\\Scripts\\python.exe (
-                            echo venv python.exe found.
-                        ) else (
-                            echo ERROR: .\\venv\\Scripts\\python.exe NOT FOUND
-                            exit /b 1
-                        )
-
                         echo Stopping any old running application on port ${env.APP_PORT}...
                         for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":%APP_PORT%" ^| findstr "LISTENING"') do (
                             if "%%a" NEQ "0" (
@@ -101,42 +93,53 @@ pipeline {
                         )
 
                         echo Starting application...
-                        set PORT=${env.APP_PORT}
                         
-                        echo --- Activating venv ---
+                        echo --- Activating venv (for context of run_app.bat creation if needed, though PORT is set in run_app.bat now) ---
                         call .\\venv\\Scripts\\activate.bat
                         
                         echo Starting python main.py on port %PORT%
                         
                         REM Create a temporary batch file to launch python
                         echo @echo off > run_app.bat
-                        echo .\\venv\\Scripts\\python.exe main.py >> run_app.bat
+                        echo echo Running run_app.bat... >> run_app.bat
+                        echo echo PORT from run_app.bat: %PORT% >> run_app.bat
+                        echo echo GEMINI_API_KEY from run_app.bat: %GEMINI_API_KEY% >> run_app.bat
+                        echo echo --- Starting Python Script --- >> run_app.bat
+                        REM Use python -u for unbuffered output
+                        echo .\\venv\\Scripts\\python.exe -u main.py >> run_app.bat
+                        REM Add a small pause within run_app.bat AFTER python starts, if it's a quick crash, this might let logs flush
+                        REM echo ping -n 3 127.0.0.1 ^> NUL >> run_app.bat
+                        echo echo --- Python Script Ended or Backgrounded --- >> run_app.bat
                         echo exit /b 0 >> run_app.bat 
                         
                         REM Start the temporary batch file in the background, redirecting its output
+                        echo --- Executing: start "GeminiApp" /B cmd /c "run_app.bat > app.log 2>&1" ---
                         start "GeminiApp" /B cmd /c "run_app.bat > app.log 2>&1"
                         
                         call .\\venv\\Scripts\\deactivate.bat
                         
-                        REM **REMOVED TIMEOUT COMMAND**
                         echo Application launch command issued. Waiting a few seconds for logs to appear...
-                        REM A more robust check would be to ping the app or check for a specific log message.
-                        REM For now, just a brief pause using a less problematic command if needed, or just proceed.
-                        REM If you still need a pause, try: ping -n 6 127.0.0.1 > NUL (pauses for 5 seconds)
+                        ping -n 6 127.0.0.1 > NUL 
 
                         echo --- Checking app.log ---
-                        REM Give a very short moment for the file system to catch up if the app started very quickly.
-                        ping -n 3 127.0.0.1 > NUL 
-
                         if exist app.log (
                             echo app.log found. Contents:
                             type app.log
                         ) else (
-                            echo app.log NOT found. The application might not have started correctly or produced output yet.
+                            echo app.log NOT found.
                         )
                         echo Application deployment script finished.
                     """
                 }
+            }
+        }
+
+        stage('Post-Deployment Verification') {
+            steps {
+                echo 'Verifying deployment...'
+                // Here you can add any verification steps, like checking if the application is running
+                // For example, using curl or a simple HTTP request to check if the app is responding
+                bat "curl -s http://localhost:${env.APP_PORT}/health || exit 1"
             }
         }
     }
