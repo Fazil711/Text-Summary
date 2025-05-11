@@ -73,6 +73,25 @@ pipeline {
                 dir("${env.DEPLOY_PATH}") {
                     bat """
                         @echo off
+                        echo Current directory: %CD%
+                        echo --- Listing files in current directory ---
+                        dir /b
+                        echo --- Checking for main.py ---
+                        if exist main.py (
+                            echo main.py found.
+                        ) else (
+                            echo ERROR: main.py NOT FOUND in %CD%
+                            exit /b 1
+                        )
+
+                        echo --- Checking for venv python.exe ---
+                        if exist .\\venv\\Scripts\\python.exe (
+                            echo venv python.exe found.
+                        ) else (
+                            echo ERROR: .\\venv\\Scripts\\python.exe NOT FOUND
+                            exit /b 1
+                        )
+
                         echo Stopping any old running application on port ${env.APP_PORT}...
                         for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":%APP_PORT%" ^| findstr "LISTENING"') do (
                             if "%%a" NEQ "0" (
@@ -83,18 +102,36 @@ pipeline {
 
                         echo Starting application...
                         set PORT=${env.APP_PORT}
+                        
+                        echo --- Activating venv and checking python version ---
                         call .\\venv\\Scripts\\activate.bat
+                        echo Python version from venv:
+                        python --version
+                        echo Which python:
+                        where python
+                        
                         echo Starting python main.py on port %PORT%
-                        REM Start in background, redirect output
-                        start "GeminiApp" /B python main.py > app.log 2>&1
+                        REM Start in background, redirect output. Try specifying full path to venv python
+                        echo Attempting to start: .\\venv\\Scripts\\python.exe main.py
+                        start "GeminiApp" /B .\\venv\\Scripts\\python.exe main.py > app.log 2>&1
+                        
                         call .\\venv\\Scripts\\deactivate.bat
-                        echo Application started. Check app.log in ${env.DEPLOY_PATH} for logs.
-                        echo Access at: http://<your-jenkins-server-ip>:${env.APP_PORT}
+                        
+                        REM Add a small delay to see if app.log gets created
+                        timeout /t 5 /nobreak > NUL
+
+                        echo --- Checking app.log ---
+                        if exist app.log (
+                            echo app.log found. Contents:
+                            type app.log
+                        ) else (
+                            echo app.log NOT found. The application might not have started correctly.
+                        )
+                        echo Application deployment script finished.
                     """
                 }
             }
         }
-    }
 
     post {
         always {
