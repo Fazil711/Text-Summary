@@ -66,23 +66,25 @@ pipeline {
                         )
 
                         echo Starting application...
-                        set PORT=${env.APP_PORT}  REM <--- THIS IS THE CRITICAL FIX: SET PORT HERE
                         
                         echo --- Activating venv ---
                         call .\\venv\\Scripts\\activate.bat
                         
-                        echo Will attempt to start python main.py on port %PORT%
+                        REM SET PORT *AFTER* VENV ACTIVATION AND *BEFORE* CREATING run_app.bat
+                        REM This ensures it's set in the environment that writes run_app.bat
+                        set PORT_TO_USE=${env.APP_PORT}
+                        echo Will attempt to start python main.py on port %PORT_TO_USE%
                         
                         REM Create a temporary batch file to launch python
                         echo @echo off > run_app.bat
                         echo echo Running run_app.bat... >> run_app.bat
-                        REM Ensure PORT is explicitly passed to the environment of the script if needed,
-                        REM or ensure the python script reads it correctly.
-                        REM Here, %PORT% will expand to the value set in the parent script.
-                        echo set PORT=%PORT% >> run_app.bat 
-                        echo echo PORT set in run_app.bat to: %PORT% >> run_app.bat
-                        echo echo GEMINI_API_KEY from run_app.bat: %GEMINI_API_KEY% >> run_app.bat
+                        REM Make run_app.bat set its OWN PORT variable from the value passed during its creation
+                        echo set PORT=%PORT_TO_USE% >> run_app.bat 
+                        echo echo PORT set in run_app.bat to: %PORT_TO_USE% >> run_app.bat
+                        echo echo GEMINI_API_KEY as seen by run_app.bat creation: %GEMINI_API_KEY% >> run_app.bat
                         echo echo --- Starting Python Script --- >> run_app.bat
+                        REM Python will pick up PORT from its environment (set by "set PORT=%PORT_TO_USE%" above)
+                        REM Python will pick up GEMINI_API_KEY from the parent Jenkins environment
                         echo .\\venv\\Scripts\\python.exe -u main.py >> run_app.bat
                         echo echo --- Python Script Ended or Backgrounded --- >> run_app.bat
                         echo exit /b 0 >> run_app.bat 
