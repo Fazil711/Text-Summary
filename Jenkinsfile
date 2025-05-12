@@ -4,7 +4,7 @@ pipeline {
     stages {
         stage('Clone') {
             steps {
-                git 'https://github.com/Fazil711/Text-Summary.git'
+                git branch: 'docker-deploy', url: 'https://github.com/Fazil711/Text-Summary.git'
             }
         }
 
