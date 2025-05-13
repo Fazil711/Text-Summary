@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  app:
+    build: . # Tells Docker Compose to build the image from the Dockerfile in the current directory
+    ports:
+      - "5001:5000" # Map host port 5001 to container port 5000 (defined by ENV PORT in Dockerfile)
+    environment:
+      - PORT=5000 # Port inside the container
+      - GEMINI_API_KEY=${GEMINI_API_KEY} # Pass through from host environment or .env file
+    volumes:
+      - .:/app # Mounts current directory to /app in container for live code changes (dev only)
+    networks:
+      - app-network
+
+  sonarqube:
+    image: sonarqube:lts-community # Or a specific version
+    ports:
+      - "9000:9000" # SonarQube web UI
+      - "9092:9092" # For internal SonarQube communication (if needed by some plugins)
+    environment:
+      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true # For dev/test, not recommended for prod without proper ES config
+    volumes:
+      - sonarqube_conf:/opt/sonarqube/conf
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  sonarqube_conf:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
