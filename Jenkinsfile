@@ -1,16 +1,15 @@
 pipeline {
-    agent any // Or specify an agent with Docker installed
+    agent any
 
     environment {
-        SONAR_HOST_URL = 'http://localhost:9000' // URL of your SonarQube server
-        DOCKER_IMAGE_NAME = "fazil711/gemini-text-summary" // Your preferred Docker image name
+        SONAR_HOST_URL = 'http://localhost:9000'
+        DOCKER_IMAGE_NAME = "fazil711/gemini-text-summary"
         DOCKER_IMAGE_TAG = "build-${BUILD_NUMBER}"
         APP_CONTAINER_NAME = "gemini-app-instance"
-        APP_PORT_HOST = 5001      // Port on the Jenkins host machine to map to the container
-        APP_PORT_CONTAINER = 5000 // Port your application listens on INSIDE the container (from Dockerfile)
-        // !!! IMPORTANT: Replace 'GeminiSonarQube' with the EXACT name of your SonarQube server
-        // configuration in Jenkins (Manage Jenkins -> Configure System -> SonarQube servers)
-        SONARQUBE_SERVER_CONFIG_NAME = 'GeminiSonarQube'
+        APP_PORT_HOST = 5001
+        APP_PORT_CONTAINER = 5000
+        SONARQUBE_SERVER_CONFIG_NAME = 'GeminiSonarQube' // Your confirmed server name
+        SONAR_METADATA_FILENAME = 'sonar-analysis-metadata.txt' // Consistent filename
     }
 
     stages {
@@ -25,7 +24,6 @@ pipeline {
             steps {
                 script {
                     sh 'docker --version'
-                    // Build the Docker image using the Dockerfile in the current directory
                     sh "docker build -t ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG} ."
                 }
             }
@@ -38,48 +36,51 @@ pipeline {
             steps {
                 withSonarQubeEnv(env.SONARQUBE_SERVER_CONFIG_NAME) {
                     script {
-                        // We will let the scanner create its .scannerwork and .sonar directories
-                        // inside the mounted volume /usr/src, controlled by the -u flag for permissions.
-                        // We still create .sonartmp for its internal working dir.
-                        sh "mkdir -p .sonartmp"
-                        sh "chmod -R 777 .sonartmp" // Make it writable
+                        sh "mkdir -p .sonartmp" // For scanner's internal working files
+                        sh "chmod -R 777 .sonartmp"
 
-                        // Define the full path for the report task file inside the container
-                        def containerReportTaskPath = "/usr/src/${env.SONAR_REPORT_TASK_FILE}"
+                        // Define the path for the metadata file *inside the container*
+                        // This will be written to the Jenkins workspace because /usr/src is the workspace.
+                        def containerMetadataFilePath = "/usr/src/${env.SONAR_METADATA_FILENAME}"
 
-                        sh """
-                        echo "Attempting SonarQube scan..."
-                        echo "Workspace (pwd): \$(pwd)"
-                        echo "Report task file will be at (container path): ${containerReportTaskPath}"
-                        ls -la
-
+                        // Construct the full docker command string carefully
+                        // Each line part of the command (except the last) MUST end with a space then '\'
+                        def dockerScannerCmd = """\
                         docker run --rm \\
                             --network="host" \\
                             -u "\$(id -u):\$(id -g)" \\
                             -e SONAR_HOST_URL="${env.SONAR_HOST_URL}" \\
                             -e SONAR_TOKEN="${SONARQUBE_TOKEN_VALUE}" \\
                             -v "\$(pwd):/usr/src" \\
-                            -v "\$(pwd)/.sonartmp:/usr/src/.sonartmp" \\ 
+                            -v "\$(pwd)/.sonartmp:/usr/src/.sonartmp" \\
                             sonarsource/sonar-scanner-cli \\
                             -Dsonar.projectBaseDir=/usr/src \\
                             -Dsonar.working.directory=/usr/src/.sonartmp \\
-                            -Dsonar.scanner.metadataFilePath=${containerReportTaskPath} 
+                            -Dsonar.scanner.metadataFilePath=${containerMetadataFilePath} \
+                        """ // NO backslash on the very last line of the command string
+
+                        echo "Attempting SonarQube scan..."
+                        echo "Workspace (pwd): \$(pwd)" // Use \$(pwd) for shell command
+                        echo "Report task file will be at (container path): ${containerMetadataFilePath}"
+                        echo "Full Docker command to be executed:"
+                        // Echoing the command helps see if it's formed correctly before execution
+                        // Need to escape for shell echo if it contains special chars, but Groovy echo is fine for the var
+                        echo dockerScannerCmd 
+
+                        sh "${dockerScannerCmd}" // Execute the constructed command
 
                         echo "Sonar scan command finished."
-                        echo "Checking for report task file at host path: ${env.SONAR_REPORT_TASK_FILE}..."
-                        if [ ! -f "${env.SONAR_REPORT_TASK_FILE}" ]; then
-                            echo "ERROR: ${env.SONAR_REPORT_TASK_FILE} not found after scan!"
+                        echo "Checking for report task file at host path: ${env.SONAR_METADATA_FILENAME}..."
+                        if [ ! -f "${env.SONAR_METADATA_FILENAME}" ]; then
+                            echo "ERROR: ${env.SONAR_METADATA_FILENAME} not found after scan!"
                             echo "Listing workspace contents:"
                             ls -la
                             echo "Listing .sonartmp contents (if any):"
                             ls -la .sonartmp || echo ".sonartmp directory not found or empty"
-                            echo "Listing .scannerwork contents (if created by scanner unexpectedly):"
-                            ls -la .scannerwork || echo ".scannerwork directory not found or empty"
                             exit 1
                         fi
-                        echo "${env.SONAR_REPORT_TASK_FILE} found. Contents:"
-                        cat "${env.SONAR_REPORT_TASK_FILE}"
-                        """
+                        echo "${env.SONAR_METADATA_FILENAME} found. Contents:"
+                        cat "${env.SONAR_METADATA_FILENAME}"
                     }
                 }
             }
@@ -89,8 +90,7 @@ pipeline {
             steps {
                 timeout(time: 10, unit: 'MINUTES') {
                     script {
-                        // Use the SONAR_REPORT_TASK_FILE env var
-                        def reportTaskFile = env.SONAR_REPORT_TASK_FILE 
+                        def reportTaskFile = env.SONAR_METADATA_FILENAME
                         if (!fileExists(reportTaskFile)) {
                             error "SonarQube report task file not found: ${reportTaskFile}. Cannot check Quality Gate."
                         }
@@ -109,13 +109,12 @@ pipeline {
                 }
             }
         }
-
+        
         stage('Deploy Application') {
             steps {
                 script {
                     sh "docker stop ${env.APP_CONTAINER_NAME} || true"
                     sh "docker rm ${env.APP_CONTAINER_NAME} || true"
-
                     withCredentials([string(credentialsId: 'gemini-api-key', variable: 'GEMINI_API_KEY_VALUE')]) {
                         sh """
                         docker run -d \\
@@ -127,7 +126,6 @@ pipeline {
                         """
                     }
                     echo "Application container ${env.APP_CONTAINER_NAME} started."
-                    echo "Access at http://<jenkins-agent-ip>:${env.APP_PORT_HOST}"
                 }
             }
         }
@@ -136,13 +134,12 @@ pipeline {
             steps {
                 echo "Verifying deployment at http://localhost:${env.APP_PORT_HOST}/"
                 script {
-                    sleep(time: 15, unit: 'SECONDS') 
+                    sleep(time: 15, unit: 'SECONDS')
                 }
                 sh "curl -s -f http://localhost:${env.APP_PORT_HOST}/ || exit 1"
             }
         }
     }
-
     post {
         always {
             echo 'Pipeline finished.'
