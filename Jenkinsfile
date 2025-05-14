@@ -12,7 +12,8 @@ pipeline {
     }
 
     stages {
-        // ... Checkout, Build Docker Image ...
+        // ... Checkout, Build Docker Image, SonarQube Analysis stages ...
+        // (These remain the same as the previous good version)
         stage('Checkout') {
             steps {
                 echo 'Checking out code...'
@@ -31,7 +32,7 @@ pipeline {
 
         stage('SonarQube Analysis') {
             environment {
-                SONARQUBE_TOKEN_VALUE = credentials('your-sonarqube-token-id') // Make sure this ID is correct
+                SONARQUBE_TOKEN_VALUE = credentials('your-sonarqube-token-id') 
             }
             steps {
                 withSonarQubeEnv(env.SONARQUBE_SERVER_CONFIG_NAME) {
@@ -43,7 +44,6 @@ pipeline {
                         echo "Workspace (pwd): ${pwd()}"
                         ls -la
 
-                        # Run the scanner. It will create .scannerwork/report-task.txt in /usr/src (mounted workspace)
                         docker run --rm \\
                             --network="host" \\
                             -e SONAR_HOST_URL="${env.SONAR_HOST_URL}" \\
@@ -55,8 +55,6 @@ pipeline {
                         echo "Checking for .scannerwork directory existence after scan:"
                         ls -lad .scannerwork || echo ".scannerwork directory NOT FOUND immediately after scan"
                         """
-                        // The withSonarQubeEnv wrapper should ideally pick up the task from .scannerwork/report-task.txt
-                        // No need for us to manually parse it if the wrapper works as intended.
                     }
                 }
             }
@@ -65,15 +63,14 @@ pipeline {
         stage('Check Quality Gate') {
             steps {
                 timeout(time: 10, unit: 'MINUTES') {
-                    // Let waitForQualityGate try to find the task automatically
-                    // using the context from withSonarQubeEnv.
-                    // Explicitly name the server config it should use for API calls.
-                    waitForQualityGate server: env.SONARQUBE_SERVER_CONFIG_NAME, abortPipeline: true
+                    // Corrected: Removed the 'server:' parameter as it's inferred from withSonarQubeEnv
+                    waitForQualityGate abortPipeline: true
                 }
             }
         }
 
-        // ... Deploy Application, Post-Deployment Verification ...
+        // ... Deploy Application, Post-Deployment Verification stages ...
+        // (These remain the same)
         stage('Deploy Application') {
             steps {
                 script {
