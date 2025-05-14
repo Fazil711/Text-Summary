@@ -36,15 +36,15 @@ pipeline {
             steps {
                 withSonarQubeEnv(env.SONARQUBE_SERVER_CONFIG_NAME) {
                     script {
-                        sh "mkdir -p .sonartmp" // For scanner's internal working files
+                        sh "mkdir -p .sonartmp"
                         sh "chmod -R 777 .sonartmp"
 
                         // Define the path for the metadata file *inside the container*
-                        // This will be written to the Jenkins workspace because /usr/src is the workspace.
-                        def containerMetadataFilePath = "/usr/src/${env.SONAR_METADATA_FILENAME}"
+                        def containerMetadataFilePathInDocker = "/usr/src/${env.SONAR_METADATA_FILENAME}"
+                        // Define the path for the metadata file *on the host/Jenkins workspace*
+                        def hostMetadataFilePath = env.SONAR_METADATA_FILENAME
 
                         // Construct the full docker command string carefully
-                        // Each line part of the command (except the last) MUST end with a space then '\'
                         def dockerScannerCmd = """\
                         docker run --rm \\
                             --network="host" \\
@@ -56,31 +56,35 @@ pipeline {
                             sonarsource/sonar-scanner-cli \\
                             -Dsonar.projectBaseDir=/usr/src \\
                             -Dsonar.working.directory=/usr/src/.sonartmp \\
-                            -Dsonar.scanner.metadataFilePath=${containerMetadataFilePath} \
-                        """ // NO backslash on the very last line of the command string
+                            -Dsonar.scanner.metadataFilePath=${containerMetadataFilePathInDocker}\
+                        """ // NO trailing backslash here
 
+                        // This ENTIRE block is now one sh script
+                        sh """
                         echo "Attempting SonarQube scan..."
-                        echo "Workspace (pwd): \$(pwd)" // Use \$(pwd) for shell command
-                        echo "Report task file will be at (container path): ${containerMetadataFilePath}"
+                        echo "Workspace (pwd): \$(pwd)"
+                        echo "Report task file will be written to (container path): ${containerMetadataFilePathInDocker}"
+                        echo "Report task file expected at (host path): ${hostMetadataFilePath}"
+                        echo "Listing workspace contents before scan:"
+                        ls -la
                         echo "Full Docker command to be executed:"
-                        // Echoing the command helps see if it's formed correctly before execution
-                        // Need to escape for shell echo if it contains special chars, but Groovy echo is fine for the var
-                        echo dockerScannerCmd 
+                        echo '${dockerScannerCmd}' # Echo the command string (single quotes to prevent shell expansion of its content)
 
-                        sh "${dockerScannerCmd}" // Execute the constructed command
+                        ${dockerScannerCmd} # Execute the constructed command
 
                         echo "Sonar scan command finished."
-                        echo "Checking for report task file at host path: ${env.SONAR_METADATA_FILENAME}..."
-                        if [ ! -f "${env.SONAR_METADATA_FILENAME}" ]; then
-                            echo "ERROR: ${env.SONAR_METADATA_FILENAME} not found after scan!"
-                            echo "Listing workspace contents:"
+                        echo "Checking for report task file at host path: ${hostMetadataFilePath}..."
+                        if [ ! -f "${hostMetadataFilePath}" ]; then
+                            echo "ERROR: ${hostMetadataFilePath} not found after scan!"
+                            echo "Listing workspace contents after scan:"
                             ls -la
                             echo "Listing .sonartmp contents (if any):"
                             ls -la .sonartmp || echo ".sonartmp directory not found or empty"
                             exit 1
                         fi
-                        echo "${env.SONAR_METADATA_FILENAME} found. Contents:"
-                        cat "${env.SONAR_METADATA_FILENAME}"
+                        echo "${hostMetadataFilePath} found. Contents:"
+                        cat "${hostMetadataFilePath}"
+                        """
                     }
                 }
             }
@@ -90,7 +94,7 @@ pipeline {
             steps {
                 timeout(time: 10, unit: 'MINUTES') {
                     script {
-                        def reportTaskFile = env.SONAR_METADATA_FILENAME
+                        def reportTaskFile = env.SONAR_METADATA_FILENAME // This is correct (host path)
                         if (!fileExists(reportTaskFile)) {
                             error "SonarQube report task file not found: ${reportTaskFile}. Cannot check Quality Gate."
                         }
