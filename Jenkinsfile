@@ -3,13 +3,12 @@ pipeline {
 
     environment {
         // GEMINI_API_KEY will be injected from Jenkins credentials
-        // SonarQube server URL and token will also be managed
-        SONAR_HOST_URL = 'http://localhost:9000' // If SonarQube is running on the Jenkins host, or use service name if Jenkins runs SonarQube as a service in the pipeline
-        DOCKER_IMAGE_NAME = "fazil711/gemini-text-summary" // Your Docker Hub username / image name
+        SONAR_HOST_URL = 'http://localhost:9000' // Correct for --network="host" on scanner
+        DOCKER_IMAGE_NAME = "fazil711/gemini-text-summary"
         DOCKER_IMAGE_TAG = "build-${BUILD_NUMBER}"
         APP_CONTAINER_NAME = "gemini-app-instance"
-        APP_PORT_HOST = 5001 // Port on the host Jenkins machine
-        APP_PORT_CONTAINER = 5000 // Port inside the container (matches Dockerfile ENV PORT)
+        APP_PORT_HOST = 5001
+        APP_PORT_CONTAINER = 5000
     }
 
     stages {
@@ -23,58 +22,49 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    // Ensure Docker is available
                     sh 'docker --version'
-                    // Build the Docker image
-                    // docker.build uses the Dockerfile in the current directory
-                    def customImage = docker.build("${env.DOCKER_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG}")
-
-                    // (Optional) Push to a Docker registry if you have one configured
-                    // docker.withRegistry('https://your-registry.com', 'your-registry-credentials-id') {
-                    //    customImage.push()
-                    //    customImage.push('latest') // Optionally push a 'latest' tag
-                    // }
+                    // Using sh for docker build as docker.build() might have different credential handling needs
+                    // or if you prefer direct shell commands.
+                    sh "docker build -t ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG} ."
                 }
             }
         }
 
         stage('SonarQube Analysis') {
             environment {
-                // Get SonarQube token from Jenkins credentials
-                SONAR_TOKEN = credentials('your-sonarqube-token-id') // Create this credential in Jenkins
+                // Use a distinct variable name for the credential's value
+                // Ensure 'your-sonarqube-token-id' is the EXACT ID of your "Secret text" credential in Jenkins
+                SONAR_LOGIN_TOKEN_FROM_CREDENTIALS = credentials('your-sonarqube-token-id')
             }
             steps {
                 script {
-                    // Assuming sonar-project.properties is in your Git repo
-                    // Run SonarScanner using its Docker image for simplicity and consistency
-                    // Mount project workspace, pass necessary env vars
-                    // Make sure the user running docker in Jenkins has permissions for /var/run/docker.sock if needed by scanner
-                    // The network_mode: "host" might be needed if SonarScanner docker needs to reach SonarQube on localhost:9000
-                    // Or use a defined docker network if both SonarQube and Scanner run in containers managed by Jenkins.
-                    // For now, assuming SonarQube is accessible at SONAR_HOST_URL from the Jenkins agent.
-
-                    // Create sonar-project.properties if it doesn't exist or needs dynamic content
-                    // For Python, ensure coverage reports are generated if you want coverage in SonarQube
-                    // Example: You might run tests and generate coverage.xml in a prior step or within this one.
-
+                    // Assuming sonar-project.properties is in your Git repo root (the current workspace)
+                    // The sonar-scanner-cli container will run using the host's network.
+                    // SONAR_HOST_URL is http://localhost:9000 (from global environment)
+                    // SONAR_LOGIN_TOKEN_FROM_CREDENTIALS holds the token value.
                     sh """
+                    echo "Attempting SonarQube scan..."
+                    echo "Sonar Host URL: ${env.SONAR_HOST_URL}"
+                    echo "Workspace (pwd): ${pwd()}"
+                    ls -la # List files in workspace to ensure sonar-project.properties is there
+
                     docker run --rm \\
-                        -e SONAR_HOST_URL=${env.SONAR_HOST_URL} \\
-                        -e SONAR_LOGIN=${SONAR_TOKEN} \\
+                        --network="host" \\
+                        -e SONAR_HOST_URL="${env.SONAR_HOST_URL}" \\
+                        -e SONAR_LOGIN="${SONAR_LOGIN_TOKEN_FROM_CREDENTIALS}" \\
                         -v "${pwd()}:/usr/src" \\
                         sonarsource/sonar-scanner-cli
                     """
-                    // Add -Dsonar.projectKey, -Dsonar.sources etc. if not using sonar-project.properties
-                    // or if you want to override them.
                 }
             }
         }
 
-        stage('Check Quality Gate') { // Optional
+        stage('Check Quality Gate') {
             steps {
                 timeout(time: 10, unit: 'MINUTES') {
-                    // Name configured in Jenkins Manage -> Configure System -> SonarQube servers
-                    waitForQualityGate 'YourSonarQubeServerNameInJenkins' 
+                    // Ensure 'YourSonarQubeServerNameInJenkins' matches the Name field in
+                    // Manage Jenkins -> Configure System -> SonarQube servers
+                    waitForQualityGate 'YourSonarQubeServerNameInJenkins'
                 }
             }
         }
@@ -82,12 +72,9 @@ pipeline {
         stage('Deploy Application') {
             steps {
                 script {
-                    // Stop and remove any existing container with the same name
                     sh "docker stop ${env.APP_CONTAINER_NAME} || true"
                     sh "docker rm ${env.APP_CONTAINER_NAME} || true"
 
-                    // Run the new Docker container
-                    // Inject GEMINI_API_KEY from Jenkins credentials
                     withCredentials([string(credentialsId: 'gemini-api-key', variable: 'GEMINI_API_KEY_VALUE')]) {
                         sh """
                         docker run -d \\
@@ -108,9 +95,8 @@ pipeline {
             steps {
                 echo "Verifying deployment at http://localhost:${env.APP_PORT_HOST}/"
                 script {
-                    sleep(time: 15, unit: 'SECONDS') // Give container time to start fully
+                    sleep(time: 15, unit: 'SECONDS')
                 }
-                // Curl runs on the Jenkins agent, targeting the port mapped on the agent's host
                 sh "curl -s -f http://localhost:${env.APP_PORT_HOST}/ || exit 1"
             }
         }
@@ -119,15 +105,12 @@ pipeline {
     post {
         always {
             echo 'Pipeline finished.'
-            // Optional: Clean up Docker image if not pushed to a registry and only needed for this build
-            // sh "docker rmi ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG} || true"
         }
         success {
             echo "Application deployed successfully: ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG}"
         }
         failure {
             echo 'Pipeline failed.'
-            // Optional: Log container logs on failure
             // sh "docker logs ${env.APP_CONTAINER_NAME} || echo 'No logs for ${env.APP_CONTAINER_NAME}'"
         }
     }
