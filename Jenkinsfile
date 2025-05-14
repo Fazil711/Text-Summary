@@ -8,7 +8,7 @@ pipeline {
         APP_CONTAINER_NAME = "gemini-app-instance"
         APP_PORT_HOST = 5001
         APP_PORT_CONTAINER = 5000
-        SONARQUBE_SERVER_CONFIG_NAME = 'MyLocalSonarQube' // !!! CHANGE THIS to your actual server name in Jenkins
+        SONARQUBE_SERVER_CONFIG_NAME = 'GeminiSonarQube' // !!! CHANGE THIS to your actual server name in Jenkins
     }
 
     stages {
