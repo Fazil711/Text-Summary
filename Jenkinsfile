@@ -35,21 +35,22 @@ pipeline {
             steps {
                 withSonarQubeEnv(env.SONARQUBE_SERVER_CONFIG_NAME) {
                     script {
-                        // Pre-create .scannerwork for the report-task.txt
-                        // Pre-create .sonartmp for scanner's internal working files
-                        // Pre-create .sonar for persistent cache
                         sh "mkdir -p .scannerwork .sonar .sonartmp"
                         sh "chmod -R 777 .scannerwork .sonar .sonartmp"
 
-                        // Define the path for the metadata file *inside the container* TO THE DEFAULT LOCATION
-                        def containerMetadataFilePathInDocker = "/usr/src/.scannerwork/report-task.txt"
+                        def groovy_containerMetadataFilePath = "/usr/src/.scannerwork/report-task.txt" // Output to default expected location
+                        def groovy_hostMetadataFilePath = ".scannerwork/report-task.txt" // Host path to check
 
                         sh """
                         echo "Attempting SonarQube scan..."
                         echo "Workspace (pwd): \$(pwd)"
-                        echo "Report task file will be at (container path): ${containerMetadataFilePathInDocker}"
+                        echo "Report task file will be at (container path): ${groovy_containerMetadataFilePath}"
+                        echo "Report task file expected at (host path): ${groovy_hostMetadataFilePath}"
+                        echo "Listing workspace contents before scan:"
                         ls -la
+                        echo "Executing Docker Scanner Command:"
 
+                        # Ensure each continued line ends with a space and then backslash
                         docker run --rm \\
                             --network="host" \\
                             -u "\$(id -u):\$(id -g)" \\
@@ -58,22 +59,21 @@ pipeline {
                             -v "\$(pwd):/usr/src" \\
                             -v "\$(pwd)/.sonartmp:/usr/src/.sonartmp" \\
                             -v "\$(pwd)/.sonar:/usr/src/.sonar" \\
-                            # We also need to mount .scannerwork if we specify it for metadata
                             -v "\$(pwd)/.scannerwork:/usr/src/.scannerwork" \\
                             sonarsource/sonar-scanner-cli \\
                             -Dsonar.projectBaseDir=/usr/src \\
                             -Dsonar.working.directory=/usr/src/.sonartmp \\
                             -Dsonar.userHome=/usr/src/.sonar \\
-                            -Dsonar.scanner.metadataFilePath=${containerMetadataFilePathInDocker}
+                            -Dsonar.scanner.metadataFilePath=${groovy_containerMetadataFilePath}
 
                         echo "Sonar scan command finished."
-                        echo "Checking for ${containerMetadataFilePathInDocker} (on host: .scannerwork/report-task.txt)..."
-                        if [ ! -f ".scannerwork/report-task.txt" ]; then
-                            echo "ERROR: .scannerwork/report-task.txt not found after scan!"
+                        echo "Checking for ${groovy_hostMetadataFilePath}..."
+                        if [ ! -f "${groovy_hostMetadataFilePath}" ]; then
+                            echo "ERROR: ${groovy_hostMetadataFilePath} not found after scan!"
                             exit 1
                         fi
-                        echo ".scannerwork/report-task.txt found. Contents:"
-                        cat ".scannerwork/report-task.txt"
+                        echo "${groovy_hostMetadataFilePath} found. Contents:"
+                        cat "${groovy_hostMetadataFilePath}"
                         """
                     }
                 }
