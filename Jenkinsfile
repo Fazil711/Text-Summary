@@ -9,7 +9,6 @@ pipeline {
         APP_PORT_HOST = 5001
         APP_PORT_CONTAINER = 5000
         SONARQUBE_SERVER_CONFIG_NAME = 'GeminiSonarQube' 
-        SONAR_METADATA_FILENAME = 'sonar-analysis-metadata.txt' 
     }
 
     stages {
