@@ -33,21 +33,21 @@ pipeline {
 
         stage('SonarQube Analysis') {
             environment {
+                // !!! IMPORTANT: Replace 'your-sonarqube-token-id' with the EXACT ID of your
+                // "Secret text" credential in Jenkins holding the SonarQube token
                 SONARQUBE_TOKEN_VALUE = credentials('your-sonarqube-token-id')
             }
             steps {
+                // withSonarQubeEnv helps set up context for waitForQualityGate
                 withSonarQubeEnv(env.SONARQUBE_SERVER_CONFIG_NAME) {
                     script {
-                        sh "mkdir -p .scannerwork" // For report-task.txt
-                        sh "mkdir -p .sonar"      // For persistent cache
-                        sh "mkdir -p .sonartmp"   // For temporary working files during scan
+                        sh "mkdir -p .scannerwork"
+                        sh "mkdir -p .sonar"
+                        sh "mkdir -p .sonartmp"
                         sh "chmod -R 777 .scannerwork .sonar .sonartmp" // Make them writable
 
-                        sh """
-                        echo "Attempting SonarQube scan..."
-                        echo "Workspace (pwd): ${pwd()}"
-                        ls -la
-
+                        // Construct the command as a variable first for clarity and debugging
+                        def dockerScannerCommand = """\
                         docker run --rm \\
                             --network="host" \\
                             -u "\$(id -u):\$(id -g)" \\
@@ -56,21 +56,34 @@ pipeline {
                             -v "${pwd()}:/usr/src" \\
                             -v "${pwd()}/.scannerwork:/usr/src/.scannerwork" \\
                             -v "${pwd()}/.sonar:/usr/src/.sonar" \\
-                            -v "${pwd()}/.sonartmp:/usr/src/.sonartmp" \\ 
+                            -v "${pwd()}/.sonartmp:/usr/src/.sonartmp" \\
                             sonarsource/sonar-scanner-cli \\
                             -Dsonar.projectBaseDir=/usr/src \\
-                            -Dsonar.userHome=/usr/src/.sonar \\         
-                            -Dsonar.working.directory=/usr/src/.sonartmp 
+                            -Dsonar.userHome=/usr/src/.sonar \\
+                            -Dsonar.working.directory=/usr/src/.sonartmp \
+                        """ // Note: No backslash after the last -D argument
 
-                        echo "Scan command finished. Checking for report-task.txt..."
+                        echo "Attempting SonarQube scan..."
+                        echo "Workspace (pwd): ${pwd()}"
+                        echo "Listing workspace contents:"
+                        ls -la
+                        echo "Executing Docker Scanner Command:"
+                        echo dockerScannerCommand // This will print the command with escaped newlines, use below for clean print
+                        // For a cleaner print of the command as it would look in a shell:
+                        // sh "echo '${dockerScannerCommand.replaceAll("\\\\", "\\\\\\\\").replaceAll("'", "\\\\'")}'" // More complex escaping needed
+
+                        sh "${dockerScannerCommand}" // Execute the command
+
+                        echo "Sonar scan command finished."
+                        echo "Checking for report-task.txt..."
                         if [ ! -f ".scannerwork/report-task.txt" ]; then
                             echo "ERROR: .scannerwork/report-task.txt not found after scan!"
+                            echo "Listing .scannerwork directory contents (if it exists):"
                             ls -la .scannerwork || echo ".scannerwork directory not found or empty"
                             exit 1
                         fi
                         echo ".scannerwork/report-task.txt found. Contents:"
                         cat .scannerwork/report-task.txt
-                        """
                     }
                 }
             }
@@ -87,8 +100,6 @@ pipeline {
                         def reportTaskContent = readFile(reportTaskFile).trim()
                         echo "Contents of report-task.txt: ${reportTaskContent}"
 
-                        // Extract task ID. Example content: ceTaskUrl=http://localhost:9000/api/ce/task?id=AYpQh....
-                        // Using regex to extract the ID directly.
                         def taskIdMatcher = (reportTaskContent =~ /ceTaskUrl=.*id=([^&]+)/)
                         if (!taskIdMatcher.find()) {
                              error "Could not extract task ID from reportTaskContent using regex. Content: ${reportTaskContent}"
@@ -96,8 +107,6 @@ pipeline {
                         def sonarTaskId = taskIdMatcher[0][1]
                         echo "Extracted SonarQube Task ID: ${sonarTaskId}"
 
-                        // Use the extracted task ID with waitForQualityGate
-                        // The server name should match your Jenkins SonarQube server configuration
                         waitForQualityGate server: env.SONARQUBE_SERVER_CONFIG_NAME, taskId: sonarTaskId, abortPipeline: true
                     }
                 }
@@ -110,7 +119,6 @@ pipeline {
                     sh "docker stop ${env.APP_CONTAINER_NAME} || true"
                     sh "docker rm ${env.APP_CONTAINER_NAME} || true"
 
-                    // Inject GEMINI_API_KEY from Jenkins credentials
                     withCredentials([string(credentialsId: 'gemini-api-key', variable: 'GEMINI_API_KEY_VALUE')]) {
                         sh """
                         docker run -d \\
@@ -131,9 +139,8 @@ pipeline {
             steps {
                 echo "Verifying deployment at http://localhost:${env.APP_PORT_HOST}/"
                 script {
-                    sleep(time: 15, unit: 'SECONDS') // Give container time to start fully
+                    sleep(time: 15, unit: 'SECONDS') 
                 }
-                // Curl runs on the Jenkins agent, targeting the port mapped on the agent's host
                 sh "curl -s -f http://localhost:${env.APP_PORT_HOST}/ || exit 1"
             }
         }
@@ -142,23 +149,12 @@ pipeline {
     post {
         always {
             echo 'Pipeline finished.'
-            // Optional: Clean up Docker image if not pushed to a registry
-            // sh "docker rmi ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG} || true"
-            // Optional: Clean up .scannerwork directory
-            // sh "rm -rf .scannerwork || true"
         }
         success {
             echo "Application deployed successfully: ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG}"
         }
         failure {
             echo 'Pipeline failed.'
-            // Optional: Log container logs on failure
-            // sh "docker logs ${env.APP_CONTAINER_NAME} || echo 'No logs for ${env.APP_CONTAINER_NAME}'"
         }
     }
 }
-
-// Removed the Eigenschaften helper class as we are using regex for task ID extraction now.
-// If you needed to parse multiple properties, the class would be useful,
-// but for just one value, regex is simpler and avoids potential sandbox issues
-// with java.util.Properties if not pre-approved.
