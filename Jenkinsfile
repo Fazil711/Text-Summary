@@ -33,46 +33,44 @@ pipeline {
 
         stage('SonarQube Analysis') {
             environment {
-                // !!! IMPORTANT: Replace 'your-sonarqube-token-id' with the EXACT ID of your
-                // "Secret text" credential in Jenkins holding the SonarQube token
                 SONARQUBE_TOKEN_VALUE = credentials('your-sonarqube-token-id')
             }
             steps {
-                // withSonarQubeEnv helps set up context for waitForQualityGate
                 withSonarQubeEnv(env.SONARQUBE_SERVER_CONFIG_NAME) {
                     script {
+                        // These sh steps are fine as they are individual commands
                         sh "mkdir -p .scannerwork"
                         sh "mkdir -p .sonar"
                         sh "mkdir -p .sonartmp"
-                        sh "chmod -R 777 .scannerwork .sonar .sonartmp" // Make them writable
+                        sh "chmod -R 777 .scannerwork .sonar .sonartmp"
 
-                        // Construct the command as a variable first for clarity and debugging
-                        def dockerScannerCommand = """\
+                        // The entire sequence of docker run and subsequent checks must be in ONE sh block
+                        sh """
+                        echo "Attempting SonarQube scan..."
+                        echo "Workspace (pwd): \$(pwd)"  # Use \$(pwd) for shell's pwd
+                        echo "Listing workspace contents:"
+                        ls -la
+
+                        # Construct and execute Docker Scanner Command
+                        # Using single quotes for the main body to prevent premature Groovy interpolation
+                        # and using shell variables for dynamic parts.
+                        # SONARQUBE_TOKEN_VALUE_SHELL is set by withCredentials and available here.
+                        # env.SONAR_HOST_URL is available from Jenkins environment.
+                        
+                        # Backslashes for line continuation must be the VERY LAST character on the line.
                         docker run --rm \\
                             --network="host" \\
                             -u "\$(id -u):\$(id -g)" \\
                             -e SONAR_HOST_URL="${env.SONAR_HOST_URL}" \\
                             -e SONAR_TOKEN="${SONARQUBE_TOKEN_VALUE}" \\
-                            -v "${pwd()}:/usr/src" \\
-                            -v "${pwd()}/.scannerwork:/usr/src/.scannerwork" \\
-                            -v "${pwd()}/.sonar:/usr/src/.sonar" \\
-                            -v "${pwd()}/.sonartmp:/usr/src/.sonartmp" \\
+                            -v "\$(pwd):/usr/src" \\
+                            -v "\$(pwd)/.scannerwork:/usr/src/.scannerwork" \\
+                            -v "\$(pwd)/.sonar:/usr/src/.sonar" \\
+                            -v "\$(pwd)/.sonartmp:/usr/src/.sonartmp" \\
                             sonarsource/sonar-scanner-cli \\
                             -Dsonar.projectBaseDir=/usr/src \\
                             -Dsonar.userHome=/usr/src/.sonar \\
-                            -Dsonar.working.directory=/usr/src/.sonartmp \
-                        """ // Note: No backslash after the last -D argument
-
-                        echo "Attempting SonarQube scan..."
-                        echo "Workspace (pwd): ${pwd()}"
-                        echo "Listing workspace contents:"
-                        ls -la
-                        echo "Executing Docker Scanner Command:"
-                        echo dockerScannerCommand // This will print the command with escaped newlines, use below for clean print
-                        // For a cleaner print of the command as it would look in a shell:
-                        // sh "echo '${dockerScannerCommand.replaceAll("\\\\", "\\\\\\\\").replaceAll("'", "\\\\'")}'" // More complex escaping needed
-
-                        sh "${dockerScannerCommand}" // Execute the command
+                            -Dsonar.working.directory=/usr/src/.sonartmp
 
                         echo "Sonar scan command finished."
                         echo "Checking for report-task.txt..."
@@ -80,10 +78,11 @@ pipeline {
                             echo "ERROR: .scannerwork/report-task.txt not found after scan!"
                             echo "Listing .scannerwork directory contents (if it exists):"
                             ls -la .scannerwork || echo ".scannerwork directory not found or empty"
-                            exit 1
+                            exit 1 # Make the sh step fail if report-task.txt is not found
                         fi
                         echo ".scannerwork/report-task.txt found. Contents:"
                         cat .scannerwork/report-task.txt
+                        """
                     }
                 }
             }
@@ -93,12 +92,13 @@ pipeline {
             steps {
                 timeout(time: 10, unit: 'MINUTES') {
                     script {
-                        def reportTaskFile = ".scannerwork/report-task.txt"
+                        def reportTaskFile = ".scannerwork/report-task.txt" // Relative to workspace root
+                        // This check is now redundant if the sh step above exits on failure, but good for safety.
                         if (!fileExists(reportTaskFile)) {
                             error "SonarQube report task file not found: ${reportTaskFile}. Cannot check Quality Gate."
                         }
                         def reportTaskContent = readFile(reportTaskFile).trim()
-                        echo "Contents of report-task.txt: ${reportTaskContent}"
+                        echo "Contents of report-task.txt for Quality Gate: ${reportTaskContent}"
 
                         def taskIdMatcher = (reportTaskContent =~ /ceTaskUrl=.*id=([^&]+)/)
                         if (!taskIdMatcher.find()) {
