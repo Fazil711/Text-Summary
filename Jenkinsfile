@@ -33,31 +33,25 @@ pipeline {
 
         stage('SonarQube Analysis') {
             environment {
-                // !!! IMPORTANT: Replace 'your-sonarqube-token-id' with the EXACT ID of your
-                // "Secret text" credential in Jenkins holding the SonarQube token
                 SONARQUBE_TOKEN_VALUE = credentials('your-sonarqube-token-id')
             }
             steps {
-                // withSonarQubeEnv helps set up context for waitForQualityGate, even if we manually get task ID
                 withSonarQubeEnv(env.SONARQUBE_SERVER_CONFIG_NAME) {
                     script {
-                        // Create .scannerwork directory in the workspace BEFORE the scan
-                        // This ensures it exists with jenkins user ownership on the host.
+                        // Create .scannerwork and .sonar (for cache) directories in the workspace BEFORE the scan
                         sh "mkdir -p .scannerwork"
-                        sh "chmod -R 777 .scannerwork" // Make it writable (adjust permissions if needed)
+                        sh "mkdir -p .sonar" // For the scanner's user cache
+                        sh "chmod -R 777 .scannerwork .sonar" // Make them writable
 
                         sh """
-                        echo "Attempting SonarQube scan using server config: ${env.SONARQUBE_SERVER_CONFIG_NAME}"
-                        echo "Sonar Host URL from Jenkins global env: ${env.SONAR_HOST_URL}"
+                        echo "Attempting SonarQube scan..."
                         echo "Workspace (pwd): ${pwd()}"
-                        echo "Listing workspace contents:"
                         ls -la
 
                         # Run the scanner.
-                        # -u "\$(id -u):\$(id -g)" runs the process inside container as current host user (jenkins)
-                        # This helps with file permissions on the mounted volume.
-                        # Mount the Jenkins workspace to /usr/src (project root for scanner)
-                        # Mount the pre-created .scannerwork to /usr/src/.scannerwork
+                        # -u "\$(id -u):\$(id -g)" runs as current host user.
+                        # We pass -Dsonar.userHome=/usr/src/.sonar to tell scanner where to create its cache.
+                        # Since /usr/src is our mounted workspace, /usr/src/.sonar will be ${pwd()}/.sonar on host.
                         docker run --rm \\
                             --network="host" \\
                             -u "\$(id -u):\$(id -g)" \\
@@ -65,13 +59,14 @@ pipeline {
                             -e SONAR_TOKEN="${SONARQUBE_TOKEN_VALUE}" \\
                             -v "${pwd()}:/usr/src" \\
                             -v "${pwd()}/.scannerwork:/usr/src/.scannerwork" \\
-                            sonarsource/sonar-scanner-cli
+                            -v "${pwd()}/.sonar:/usr/src/.sonar" \\ // Mount the sonar cache dir
+                            sonarsource/sonar-scanner-cli \\
+                            -Dsonar.userHome=/usr/src/.sonar \\ // Define user cache directory for scanner
+                            -Dsonar.projectBaseDir=/usr/src // Explicitly set project base dir
 
-                        echo "Sonar scan command finished."
-                        echo "Checking for report-task.txt..."
+                        echo "Scan command finished. Checking for report-task.txt..."
                         if [ ! -f ".scannerwork/report-task.txt" ]; then
                             echo "ERROR: .scannerwork/report-task.txt not found after scan!"
-                            echo "Listing .scannerwork directory contents (if it exists):"
                             ls -la .scannerwork || echo ".scannerwork directory not found or empty"
                             exit 1
                         fi
