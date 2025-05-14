@@ -38,50 +38,47 @@ pipeline {
             steps {
                 withSonarQubeEnv(env.SONARQUBE_SERVER_CONFIG_NAME) {
                     script {
-                        // These sh steps are fine as they are individual commands
-                        sh "mkdir -p .scannerwork"
-                        sh "mkdir -p .sonar"
+                        // We will let the scanner create its .scannerwork and .sonar directories
+                        // inside the mounted volume /usr/src, controlled by the -u flag for permissions.
+                        // We still create .sonartmp for its internal working dir.
                         sh "mkdir -p .sonartmp"
-                        sh "chmod -R 777 .scannerwork .sonar .sonartmp"
+                        sh "chmod -R 777 .sonartmp" // Make it writable
 
-                        // The entire sequence of docker run and subsequent checks must be in ONE sh block
+                        // Define the full path for the report task file inside the container
+                        def containerReportTaskPath = "/usr/src/${env.SONAR_REPORT_TASK_FILE}"
+
                         sh """
                         echo "Attempting SonarQube scan..."
-                        echo "Workspace (pwd): \$(pwd)"  # Use \$(pwd) for shell's pwd
-                        echo "Listing workspace contents:"
+                        echo "Workspace (pwd): \$(pwd)"
+                        echo "Report task file will be at (container path): ${containerReportTaskPath}"
                         ls -la
 
-                        # Construct and execute Docker Scanner Command
-                        # Using single quotes for the main body to prevent premature Groovy interpolation
-                        # and using shell variables for dynamic parts.
-                        # SONARQUBE_TOKEN_VALUE_SHELL is set by withCredentials and available here.
-                        # env.SONAR_HOST_URL is available from Jenkins environment.
-                        
-                        # Backslashes for line continuation must be the VERY LAST character on the line.
                         docker run --rm \\
                             --network="host" \\
                             -u "\$(id -u):\$(id -g)" \\
                             -e SONAR_HOST_URL="${env.SONAR_HOST_URL}" \\
                             -e SONAR_TOKEN="${SONARQUBE_TOKEN_VALUE}" \\
                             -v "\$(pwd):/usr/src" \\
-                            -v "\$(pwd)/.scannerwork:/usr/src/.scannerwork" \\
-                            -v "\$(pwd)/.sonar:/usr/src/.sonar" \\
-                            -v "\$(pwd)/.sonartmp:/usr/src/.sonartmp" \\
+                            -v "\$(pwd)/.sonartmp:/usr/src/.sonartmp" \\ 
                             sonarsource/sonar-scanner-cli \\
                             -Dsonar.projectBaseDir=/usr/src \\
-                            -Dsonar.userHome=/usr/src/.sonar \\
-                            -Dsonar.working.directory=/usr/src/.sonartmp
+                            -Dsonar.working.directory=/usr/src/.sonartmp \\
+                            -Dsonar.scanner.metadataFilePath=${containerReportTaskPath} 
 
                         echo "Sonar scan command finished."
-                        echo "Checking for report-task.txt..."
-                        if [ ! -f ".scannerwork/report-task.txt" ]; then
-                            echo "ERROR: .scannerwork/report-task.txt not found after scan!"
-                            echo "Listing .scannerwork directory contents (if it exists):"
+                        echo "Checking for report task file at host path: ${env.SONAR_REPORT_TASK_FILE}..."
+                        if [ ! -f "${env.SONAR_REPORT_TASK_FILE}" ]; then
+                            echo "ERROR: ${env.SONAR_REPORT_TASK_FILE} not found after scan!"
+                            echo "Listing workspace contents:"
+                            ls -la
+                            echo "Listing .sonartmp contents (if any):"
+                            ls -la .sonartmp || echo ".sonartmp directory not found or empty"
+                            echo "Listing .scannerwork contents (if created by scanner unexpectedly):"
                             ls -la .scannerwork || echo ".scannerwork directory not found or empty"
-                            exit 1 # Make the sh step fail if report-task.txt is not found
+                            exit 1
                         fi
-                        echo ".scannerwork/report-task.txt found. Contents:"
-                        cat .scannerwork/report-task.txt
+                        echo "${env.SONAR_REPORT_TASK_FILE} found. Contents:"
+                        cat "${env.SONAR_REPORT_TASK_FILE}"
                         """
                     }
                 }
@@ -92,13 +89,13 @@ pipeline {
             steps {
                 timeout(time: 10, unit: 'MINUTES') {
                     script {
-                        def reportTaskFile = ".scannerwork/report-task.txt" // Relative to workspace root
-                        // This check is now redundant if the sh step above exits on failure, but good for safety.
+                        // Use the SONAR_REPORT_TASK_FILE env var
+                        def reportTaskFile = env.SONAR_REPORT_TASK_FILE 
                         if (!fileExists(reportTaskFile)) {
                             error "SonarQube report task file not found: ${reportTaskFile}. Cannot check Quality Gate."
                         }
                         def reportTaskContent = readFile(reportTaskFile).trim()
-                        echo "Contents of report-task.txt for Quality Gate: ${reportTaskContent}"
+                        echo "Contents of ${reportTaskFile} for Quality Gate: ${reportTaskContent}"
 
                         def taskIdMatcher = (reportTaskContent =~ /ceTaskUrl=.*id=([^&]+)/)
                         if (!taskIdMatcher.find()) {
