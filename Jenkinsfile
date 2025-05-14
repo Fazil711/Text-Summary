@@ -49,9 +49,6 @@ pipeline {
                         ls -la
 
                         # Run the scanner.
-                        # -u "\$(id -u):\$(id -g)" runs as current host user.
-                        # We pass -Dsonar.userHome=/usr/src/.sonar to tell scanner where to create its cache.
-                        # Since /usr/src is our mounted workspace, /usr/src/.sonar will be ${pwd()}/.sonar on host.
                         docker run --rm \\
                             --network="host" \\
                             -u "\$(id -u):\$(id -g)" \\
@@ -59,10 +56,10 @@ pipeline {
                             -e SONAR_TOKEN="${SONARQUBE_TOKEN_VALUE}" \\
                             -v "${pwd()}:/usr/src" \\
                             -v "${pwd()}/.scannerwork:/usr/src/.scannerwork" \\
-                            -v "${pwd()}/.sonar:/usr/src/.sonar" \\ 
+                            -v "${pwd()}/.sonar:/usr/src/.sonar" \\
                             sonarsource/sonar-scanner-cli \\
-                            -Dsonar.userHome=/usr/src/.sonar \\ // Define user cache directory for scanner
-                            -Dsonar.projectBaseDir=/usr/src // Explicitly set project base dir
+                            -Dsonar.userHome=/usr/src/.sonar \\
+                            -Dsonar.projectBaseDir=/usr/src
 
                         echo "Scan command finished. Checking for report-task.txt..."
                         if [ ! -f ".scannerwork/report-task.txt" ]; then
