@@ -82,7 +82,7 @@ pipeline {
 
         stage('Check Quality Gate') {
             steps {
-                timeout(time: 10, unit: 'MINUTES') {
+                timeout(time: 20, unit: 'MINUTES') {
                     // Let waitForQualityGate try to find the task automatically from the default location
                     // It should use the server from withSonarQubeEnv context.
                     waitForQualityGate abortPipeline: true
