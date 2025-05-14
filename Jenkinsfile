@@ -36,12 +36,11 @@ pipeline {
             steps {
                 withSonarQubeEnv(env.SONARQUBE_SERVER_CONFIG_NAME) {
                     script {
-                        sh "mkdir -p .sonartmp"
-                        sh "chmod -R 777 .sonartmp"
+                        sh "mkdir -p .sonartmp" // For scanner's internal working files
+                        sh "mkdir -p .sonar"    // For scanner's persistent cache
+                        sh "chmod -R 777 .sonartmp .sonar" // Make them writable
 
-                        // Define the path for the metadata file *inside the container*
                         def containerMetadataFilePathInDocker = "/usr/src/${env.SONAR_METADATA_FILENAME}"
-                        // Define the path for the metadata file *on the host/Jenkins workspace*
                         def hostMetadataFilePath = env.SONAR_METADATA_FILENAME
 
                         // Construct the full docker command string carefully
@@ -53,13 +52,14 @@ pipeline {
                             -e SONAR_TOKEN="${SONARQUBE_TOKEN_VALUE}" \\
                             -v "\$(pwd):/usr/src" \\
                             -v "\$(pwd)/.sonartmp:/usr/src/.sonartmp" \\
+                            -v "\$(pwd)/.sonar:/usr/src/.sonar" \\  
                             sonarsource/sonar-scanner-cli \\
                             -Dsonar.projectBaseDir=/usr/src \\
                             -Dsonar.working.directory=/usr/src/.sonartmp \\
+                            -Dsonar.userHome=/usr/src/.sonar \\  
                             -Dsonar.scanner.metadataFilePath=${containerMetadataFilePathInDocker}\
                         """ // NO trailing backslash here
 
-                        // This ENTIRE block is now one sh script
                         sh """
                         echo "Attempting SonarQube scan..."
                         echo "Workspace (pwd): \$(pwd)"
@@ -68,7 +68,7 @@ pipeline {
                         echo "Listing workspace contents before scan:"
                         ls -la
                         echo "Full Docker command to be executed:"
-                        echo '${dockerScannerCmd}' # Echo the command string (single quotes to prevent shell expansion of its content)
+                        printf '%s\\n' '${dockerScannerCmd}'
 
                         ${dockerScannerCmd} # Execute the constructed command
 
@@ -76,10 +76,7 @@ pipeline {
                         echo "Checking for report task file at host path: ${hostMetadataFilePath}..."
                         if [ ! -f "${hostMetadataFilePath}" ]; then
                             echo "ERROR: ${hostMetadataFilePath} not found after scan!"
-                            echo "Listing workspace contents after scan:"
-                            ls -la
-                            echo "Listing .sonartmp contents (if any):"
-                            ls -la .sonartmp || echo ".sonartmp directory not found or empty"
+                            # ... (rest of error checks)
                             exit 1
                         fi
                         echo "${hostMetadataFilePath} found. Contents:"
