@@ -64,7 +64,7 @@ pipeline {
                 timeout(time: 10, unit: 'MINUTES') {
                     // Ensure 'YourSonarQubeServerNameInJenkins' matches the Name field in
                     // Manage Jenkins -> Configure System -> SonarQube servers
-                    waitForQualityGate 'YourSonarQubeServerNameInJenkins'
+                    waitForQualityGate 'GeminiSonarQube'
                 }
             }
         }
