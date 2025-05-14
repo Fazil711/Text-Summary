@@ -1,19 +1,19 @@
 pipeline {
-    agent any
+    agent any // Or specify an agent with Docker installed
 
     environment {
-        SONAR_HOST_URL = 'http://localhost:9000'
-        DOCKER_IMAGE_NAME = "fazil711/gemini-text-summary"
+        SONAR_HOST_URL = 'http://localhost:9000' // URL of your SonarQube server
+        DOCKER_IMAGE_NAME = "fazil711/gemini-text-summary" // Your preferred Docker image name
         DOCKER_IMAGE_TAG = "build-${BUILD_NUMBER}"
         APP_CONTAINER_NAME = "gemini-app-instance"
-        APP_PORT_HOST = 5001
-        APP_PORT_CONTAINER = 5000
-        SONARQUBE_SERVER_CONFIG_NAME = 'GeminiSonarQube' // Your confirmed server name
+        APP_PORT_HOST = 5001      // Port on the Jenkins host machine to map to the container
+        APP_PORT_CONTAINER = 5000 // Port your application listens on INSIDE the container (from Dockerfile)
+        // !!! IMPORTANT: Replace 'GeminiSonarQube' with the EXACT name of your SonarQube server
+        // configuration in Jenkins (Manage Jenkins -> Configure System -> SonarQube servers)
+        SONARQUBE_SERVER_CONFIG_NAME = 'GeminiSonarQube'
     }
 
     stages {
-        // ... Checkout, Build Docker Image, SonarQube Analysis stages ...
-        // (These remain the same as the previous good version)
         stage('Checkout') {
             steps {
                 echo 'Checking out code...'
@@ -25,6 +25,7 @@ pipeline {
             steps {
                 script {
                     sh 'docker --version'
+                    // Build the Docker image using the Dockerfile in the current directory
                     sh "docker build -t ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG} ."
                 }
             }
@@ -32,28 +33,50 @@ pipeline {
 
         stage('SonarQube Analysis') {
             environment {
-                SONARQUBE_TOKEN_VALUE = credentials('your-sonarqube-token-id') 
+                // !!! IMPORTANT: Replace 'your-sonarqube-token-id' with the EXACT ID of your
+                // "Secret text" credential in Jenkins holding the SonarQube token
+                SONARQUBE_TOKEN_VALUE = credentials('your-sonarqube-token-id')
             }
             steps {
+                // withSonarQubeEnv helps set up context for waitForQualityGate, even if we manually get task ID
                 withSonarQubeEnv(env.SONARQUBE_SERVER_CONFIG_NAME) {
                     script {
+                        // Create .scannerwork directory in the workspace BEFORE the scan
+                        // This ensures it exists with jenkins user ownership on the host.
+                        sh "mkdir -p .scannerwork"
+                        sh "chmod -R 777 .scannerwork" // Make it writable (adjust permissions if needed)
+
                         sh """
                         echo "Attempting SonarQube scan using server config: ${env.SONARQUBE_SERVER_CONFIG_NAME}"
-                        echo "Sonar Host URL from Jenkins SonarQube config: \$SONAR_HOST_URL" 
-                        echo "Sonar Token from Jenkins SonarQube config (if set): \$SONAR_AUTH_TOKEN"
+                        echo "Sonar Host URL from Jenkins global env: ${env.SONAR_HOST_URL}"
                         echo "Workspace (pwd): ${pwd()}"
+                        echo "Listing workspace contents:"
                         ls -la
 
+                        # Run the scanner.
+                        # -u "\$(id -u):\$(id -g)" runs the process inside container as current host user (jenkins)
+                        # This helps with file permissions on the mounted volume.
+                        # Mount the Jenkins workspace to /usr/src (project root for scanner)
+                        # Mount the pre-created .scannerwork to /usr/src/.scannerwork
                         docker run --rm \\
                             --network="host" \\
+                            -u "\$(id -u):\$(id -g)" \\
                             -e SONAR_HOST_URL="${env.SONAR_HOST_URL}" \\
                             -e SONAR_TOKEN="${SONARQUBE_TOKEN_VALUE}" \\
                             -v "${pwd()}:/usr/src" \\
+                            -v "${pwd()}/.scannerwork:/usr/src/.scannerwork" \\
                             sonarsource/sonar-scanner-cli
-                        
+
                         echo "Sonar scan command finished."
-                        echo "Checking for .scannerwork directory existence after scan:"
-                        ls -lad .scannerwork || echo ".scannerwork directory NOT FOUND immediately after scan"
+                        echo "Checking for report-task.txt..."
+                        if [ ! -f ".scannerwork/report-task.txt" ]; then
+                            echo "ERROR: .scannerwork/report-task.txt not found after scan!"
+                            echo "Listing .scannerwork directory contents (if it exists):"
+                            ls -la .scannerwork || echo ".scannerwork directory not found or empty"
+                            exit 1
+                        fi
+                        echo ".scannerwork/report-task.txt found. Contents:"
+                        cat .scannerwork/report-task.txt
                         """
                     }
                 }
@@ -63,19 +86,38 @@ pipeline {
         stage('Check Quality Gate') {
             steps {
                 timeout(time: 10, unit: 'MINUTES') {
-                    // Corrected: Removed the 'server:' parameter as it's inferred from withSonarQubeEnv
-                    waitForQualityGate abortPipeline: true
+                    script {
+                        def reportTaskFile = ".scannerwork/report-task.txt"
+                        if (!fileExists(reportTaskFile)) {
+                            error "SonarQube report task file not found: ${reportTaskFile}. Cannot check Quality Gate."
+                        }
+                        def reportTaskContent = readFile(reportTaskFile).trim()
+                        echo "Contents of report-task.txt: ${reportTaskContent}"
+
+                        // Extract task ID. Example content: ceTaskUrl=http://localhost:9000/api/ce/task?id=AYpQh....
+                        // Using regex to extract the ID directly.
+                        def taskIdMatcher = (reportTaskContent =~ /ceTaskUrl=.*id=([^&]+)/)
+                        if (!taskIdMatcher.find()) {
+                             error "Could not extract task ID from reportTaskContent using regex. Content: ${reportTaskContent}"
+                        }
+                        def sonarTaskId = taskIdMatcher[0][1]
+                        echo "Extracted SonarQube Task ID: ${sonarTaskId}"
+
+                        // Use the extracted task ID with waitForQualityGate
+                        // The server name should match your Jenkins SonarQube server configuration
+                        waitForQualityGate server: env.SONARQUBE_SERVER_CONFIG_NAME, taskId: sonarTaskId, abortPipeline: true
+                    }
                 }
             }
         }
 
-        // ... Deploy Application, Post-Deployment Verification stages ...
-        // (These remain the same)
         stage('Deploy Application') {
             steps {
                 script {
                     sh "docker stop ${env.APP_CONTAINER_NAME} || true"
                     sh "docker rm ${env.APP_CONTAINER_NAME} || true"
+
+                    // Inject GEMINI_API_KEY from Jenkins credentials
                     withCredentials([string(credentialsId: 'gemini-api-key', variable: 'GEMINI_API_KEY_VALUE')]) {
                         sh """
                         docker run -d \\
@@ -87,6 +129,7 @@ pipeline {
                         """
                     }
                     echo "Application container ${env.APP_CONTAINER_NAME} started."
+                    echo "Access at http://<jenkins-agent-ip>:${env.APP_PORT_HOST}"
                 }
             }
         }
@@ -95,22 +138,34 @@ pipeline {
             steps {
                 echo "Verifying deployment at http://localhost:${env.APP_PORT_HOST}/"
                 script {
-                    sleep(time: 15, unit: 'SECONDS')
+                    sleep(time: 15, unit: 'SECONDS') // Give container time to start fully
                 }
+                // Curl runs on the Jenkins agent, targeting the port mapped on the agent's host
                 sh "curl -s -f http://localhost:${env.APP_PORT_HOST}/ || exit 1"
             }
         }
     }
-    // ... post block ...
+
     post {
         always {
             echo 'Pipeline finished.'
+            // Optional: Clean up Docker image if not pushed to a registry
+            // sh "docker rmi ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG} || true"
+            // Optional: Clean up .scannerwork directory
+            // sh "rm -rf .scannerwork || true"
         }
         success {
             echo "Application deployed successfully: ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG}"
         }
         failure {
             echo 'Pipeline failed.'
+            // Optional: Log container logs on failure
+            // sh "docker logs ${env.APP_CONTAINER_NAME} || echo 'No logs for ${env.APP_CONTAINER_NAME}'"
         }
     }
 }
+
+// Removed the Eigenschaften helper class as we are using regex for task ID extraction now.
+// If you needed to parse multiple properties, the class would be useful,
+// but for just one value, regex is simpler and avoids potential sandbox issues
+// with java.util.Properties if not pre-approved.
