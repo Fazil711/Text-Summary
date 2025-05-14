@@ -8,8 +8,8 @@ pipeline {
         APP_CONTAINER_NAME = "gemini-app-instance"
         APP_PORT_HOST = 5001
         APP_PORT_CONTAINER = 5000
-        SONARQUBE_SERVER_CONFIG_NAME = 'GeminiSonarQube' // Your confirmed server name
-        SONAR_METADATA_FILENAME = 'sonar-analysis-metadata.txt' // Consistent filename
+        SONARQUBE_SERVER_CONFIG_NAME = 'GeminiSonarQube' 
+        SONAR_METADATA_FILENAME = 'sonar-analysis-metadata.txt' 
     }
 
     stages {
@@ -36,15 +36,22 @@ pipeline {
             steps {
                 withSonarQubeEnv(env.SONARQUBE_SERVER_CONFIG_NAME) {
                     script {
-                        sh "mkdir -p .sonartmp" // For scanner's internal working files
-                        sh "mkdir -p .sonar"    // For scanner's persistent cache
-                        sh "chmod -R 777 .sonartmp .sonar" // Make them writable
+                        sh "mkdir -p .sonartmp"
+                        sh "mkdir -p .sonar"    
+                        sh "chmod -R 777 .sonartmp .sonar"
 
-                        def containerMetadataFilePathInDocker = "/usr/src/${env.SONAR_METADATA_FILENAME}"
-                        def hostMetadataFilePath = env.SONAR_METADATA_FILENAME
+                        def groovy_containerMetadataFilePath = "/usr/src/${env.SONAR_METADATA_FILENAME}"
+                        def groovy_hostMetadataFilePath = env.SONAR_METADATA_FILENAME
 
-                        // Construct the full docker command string carefully
-                        def dockerScannerCmd = """\
+                        sh """
+                        echo "Attempting SonarQube scan..."
+                        echo "Workspace (pwd): \$(pwd)"
+                        echo "Report task file will be written to (container path): ${groovy_containerMetadataFilePath}"
+                        echo "Report task file expected at (host path): ${groovy_hostMetadataFilePath}"
+                        echo "Listing workspace contents before scan:"
+                        ls -la
+                        echo "Executing Docker Scanner Command:"
+
                         docker run --rm \\
                             --network="host" \\
                             -u "\$(id -u):\$(id -g)" \\
@@ -52,35 +59,24 @@ pipeline {
                             -e SONAR_TOKEN="${SONARQUBE_TOKEN_VALUE}" \\
                             -v "\$(pwd):/usr/src" \\
                             -v "\$(pwd)/.sonartmp:/usr/src/.sonartmp" \\
-                            -v "\$(pwd)/.sonar:/usr/src/.sonar" \\  
+                            -v "\$(pwd)/.sonar:/usr/src/.sonar" \\
                             sonarsource/sonar-scanner-cli \\
                             -Dsonar.projectBaseDir=/usr/src \\
                             -Dsonar.working.directory=/usr/src/.sonartmp \\
-                            -Dsonar.userHome=/usr/src/.sonar \\  
-                            -Dsonar.scanner.metadataFilePath=${containerMetadataFilePathInDocker}\
-                        """ // NO trailing backslash here
-
-                        sh """
-                        echo "Attempting SonarQube scan..."
-                        echo "Workspace (pwd): \$(pwd)"
-                        echo "Report task file will be written to (container path): ${containerMetadataFilePathInDocker}"
-                        echo "Report task file expected at (host path): ${hostMetadataFilePath}"
-                        echo "Listing workspace contents before scan:"
-                        ls -la
-                        echo "Full Docker command to be executed:"
-                        printf '%s\\n' '${dockerScannerCmd}'
-
-                        ${dockerScannerCmd} # Execute the constructed command
+                            -Dsonar.userHome=/usr/src/.sonar \\
+                            -Dsonar.scanner.metadataFilePath=${groovy_containerMetadataFilePath}
 
                         echo "Sonar scan command finished."
-                        echo "Checking for report task file at host path: ${hostMetadataFilePath}..."
-                        if [ ! -f "${hostMetadataFilePath}" ]; then
-                            echo "ERROR: ${hostMetadataFilePath} not found after scan!"
-                            # ... (rest of error checks)
+                        echo "Checking for report task file at host path: ${groovy_hostMetadataFilePath}..."
+                        if [ ! -f "${groovy_hostMetadataFilePath}" ]; then
+                            echo "ERROR: ${groovy_hostMetadataFilePath} not found after scan!"
+                            ls -la .sonartmp || echo ".sonartmp directory not found or empty"
+                            ls -la .sonar || echo ".sonar directory not found or empty"
+                            ls -la .scannerwork || echo ".scannerwork directory (if any) not found or empty"
                             exit 1
                         fi
-                        echo "${hostMetadataFilePath} found. Contents:"
-                        cat "${hostMetadataFilePath}"
+                        echo "${groovy_hostMetadataFilePath} found. Contents:"
+                        cat "${groovy_hostMetadataFilePath}"
                         """
                     }
                 }
@@ -91,7 +87,7 @@ pipeline {
             steps {
                 timeout(time: 10, unit: 'MINUTES') {
                     script {
-                        def reportTaskFile = env.SONAR_METADATA_FILENAME // This is correct (host path)
+                        def reportTaskFile = env.SONAR_METADATA_FILENAME 
                         if (!fileExists(reportTaskFile)) {
                             error "SonarQube report task file not found: ${reportTaskFile}. Cannot check Quality Gate."
                         }
