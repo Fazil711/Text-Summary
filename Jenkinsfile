@@ -56,11 +56,11 @@ pipeline {
                             -v "${pwd()}:/usr/src" \\
                             -v "${pwd()}/.scannerwork:/usr/src/.scannerwork" \\
                             -v "${pwd()}/.sonar:/usr/src/.sonar" \\
-                            -v "${pwd()}/.sonartmp:/usr/src/.sonartmp" \\ # Mount the temp working dir
+                            -v "${pwd()}/.sonartmp:/usr/src/.sonartmp" \\ 
                             sonarsource/sonar-scanner-cli \\
                             -Dsonar.projectBaseDir=/usr/src \\
-                            -Dsonar.userHome=/usr/src/.sonar \\         # For persistent cache
-                            -Dsonar.working.directory=/usr/src/.sonartmp # For temporary files during analysis
+                            -Dsonar.userHome=/usr/src/.sonar \\         
+                            -Dsonar.working.directory=/usr/src/.sonartmp 
 
                         echo "Scan command finished. Checking for report-task.txt..."
                         if [ ! -f ".scannerwork/report-task.txt" ]; then
