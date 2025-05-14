@@ -36,21 +36,20 @@ pipeline {
             steps {
                 withSonarQubeEnv(env.SONARQUBE_SERVER_CONFIG_NAME) {
                     script {
-                        sh "mkdir -p .sonartmp"
-                        sh "mkdir -p .sonar"    
-                        sh "chmod -R 777 .sonartmp .sonar"
+                        // Pre-create .scannerwork for the report-task.txt
+                        // Pre-create .sonartmp for scanner's internal working files
+                        // Pre-create .sonar for persistent cache
+                        sh "mkdir -p .scannerwork .sonar .sonartmp"
+                        sh "chmod -R 777 .scannerwork .sonar .sonartmp"
 
-                        def groovy_containerMetadataFilePath = "/usr/src/${env.SONAR_METADATA_FILENAME}"
-                        def groovy_hostMetadataFilePath = env.SONAR_METADATA_FILENAME
+                        // Define the path for the metadata file *inside the container* TO THE DEFAULT LOCATION
+                        def containerMetadataFilePathInDocker = "/usr/src/.scannerwork/report-task.txt"
 
                         sh """
                         echo "Attempting SonarQube scan..."
                         echo "Workspace (pwd): \$(pwd)"
-                        echo "Report task file will be written to (container path): ${groovy_containerMetadataFilePath}"
-                        echo "Report task file expected at (host path): ${groovy_hostMetadataFilePath}"
-                        echo "Listing workspace contents before scan:"
+                        echo "Report task file will be at (container path): ${containerMetadataFilePathInDocker}"
                         ls -la
-                        echo "Executing Docker Scanner Command:"
 
                         docker run --rm \\
                             --network="host" \\
@@ -60,23 +59,22 @@ pipeline {
                             -v "\$(pwd):/usr/src" \\
                             -v "\$(pwd)/.sonartmp:/usr/src/.sonartmp" \\
                             -v "\$(pwd)/.sonar:/usr/src/.sonar" \\
+                            # We also need to mount .scannerwork if we specify it for metadata
+                            -v "\$(pwd)/.scannerwork:/usr/src/.scannerwork" \\
                             sonarsource/sonar-scanner-cli \\
                             -Dsonar.projectBaseDir=/usr/src \\
                             -Dsonar.working.directory=/usr/src/.sonartmp \\
                             -Dsonar.userHome=/usr/src/.sonar \\
-                            -Dsonar.scanner.metadataFilePath=${groovy_containerMetadataFilePath}
+                            -Dsonar.scanner.metadataFilePath=${containerMetadataFilePathInDocker}
 
                         echo "Sonar scan command finished."
-                        echo "Checking for report task file at host path: ${groovy_hostMetadataFilePath}..."
-                        if [ ! -f "${groovy_hostMetadataFilePath}" ]; then
-                            echo "ERROR: ${groovy_hostMetadataFilePath} not found after scan!"
-                            ls -la .sonartmp || echo ".sonartmp directory not found or empty"
-                            ls -la .sonar || echo ".sonar directory not found or empty"
-                            ls -la .scannerwork || echo ".scannerwork directory (if any) not found or empty"
+                        echo "Checking for ${containerMetadataFilePathInDocker} (on host: .scannerwork/report-task.txt)..."
+                        if [ ! -f ".scannerwork/report-task.txt" ]; then
+                            echo "ERROR: .scannerwork/report-task.txt not found after scan!"
                             exit 1
                         fi
-                        echo "${groovy_hostMetadataFilePath} found. Contents:"
-                        cat "${groovy_hostMetadataFilePath}"
+                        echo ".scannerwork/report-task.txt found. Contents:"
+                        cat ".scannerwork/report-task.txt"
                         """
                     }
                 }
@@ -86,23 +84,9 @@ pipeline {
         stage('Check Quality Gate') {
             steps {
                 timeout(time: 10, unit: 'MINUTES') {
-                    script {
-                        def reportTaskFile = env.SONAR_METADATA_FILENAME 
-                        if (!fileExists(reportTaskFile)) {
-                            error "SonarQube report task file not found: ${reportTaskFile}. Cannot check Quality Gate."
-                        }
-                        def reportTaskContent = readFile(reportTaskFile).trim()
-                        echo "Contents of ${reportTaskFile} for Quality Gate: ${reportTaskContent}"
-
-                        def taskIdMatcher = (reportTaskContent =~ /ceTaskUrl=.*id=([^&]+)/)
-                        if (!taskIdMatcher.find()) {
-                             error "Could not extract task ID from reportTaskContent using regex. Content: ${reportTaskContent}"
-                        }
-                        def sonarTaskId = taskIdMatcher[0][1]
-                        echo "Extracted SonarQube Task ID: ${sonarTaskId}"
-
-                        waitForQualityGate server: env.SONARQUBE_SERVER_CONFIG_NAME, taskId: sonarTaskId, abortPipeline: true
-                    }
+                    // Let waitForQualityGate try to find the task automatically from the default location
+                    // It should use the server from withSonarQubeEnv context.
+                    waitForQualityGate abortPipeline: true
                 }
             }
         }
