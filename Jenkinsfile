@@ -59,7 +59,7 @@ pipeline {
                             -e SONAR_TOKEN="${SONARQUBE_TOKEN_VALUE}" \\
                             -v "${pwd()}:/usr/src" \\
                             -v "${pwd()}/.scannerwork:/usr/src/.scannerwork" \\
-                            -v "${pwd()}/.sonar:/usr/src/.sonar" \\ // Mount the sonar cache dir
+                            -v "${pwd()}/.sonar:/usr/src/.sonar" \\ 
                             sonarsource/sonar-scanner-cli \\
                             -Dsonar.userHome=/usr/src/.sonar \\ // Define user cache directory for scanner
                             -Dsonar.projectBaseDir=/usr/src // Explicitly set project base dir
