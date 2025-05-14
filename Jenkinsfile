@@ -38,17 +38,16 @@ pipeline {
             steps {
                 withSonarQubeEnv(env.SONARQUBE_SERVER_CONFIG_NAME) {
                     script {
-                        // Create .scannerwork and .sonar (for cache) directories in the workspace BEFORE the scan
-                        sh "mkdir -p .scannerwork"
-                        sh "mkdir -p .sonar" // For the scanner's user cache
-                        sh "chmod -R 777 .scannerwork .sonar" // Make them writable
+                        sh "mkdir -p .scannerwork" // For report-task.txt
+                        sh "mkdir -p .sonar"      // For persistent cache
+                        sh "mkdir -p .sonartmp"   // For temporary working files during scan
+                        sh "chmod -R 777 .scannerwork .sonar .sonartmp" // Make them writable
 
                         sh """
                         echo "Attempting SonarQube scan..."
                         echo "Workspace (pwd): ${pwd()}"
                         ls -la
 
-                        # Run the scanner.
                         docker run --rm \\
                             --network="host" \\
                             -u "\$(id -u):\$(id -g)" \\
@@ -57,9 +56,11 @@ pipeline {
                             -v "${pwd()}:/usr/src" \\
                             -v "${pwd()}/.scannerwork:/usr/src/.scannerwork" \\
                             -v "${pwd()}/.sonar:/usr/src/.sonar" \\
+                            -v "${pwd()}/.sonartmp:/usr/src/.sonartmp" \\ # Mount the temp working dir
                             sonarsource/sonar-scanner-cli \\
-                            -Dsonar.userHome=/usr/src/.sonar \\
-                            -Dsonar.projectBaseDir=/usr/src
+                            -Dsonar.projectBaseDir=/usr/src \\
+                            -Dsonar.userHome=/usr/src/.sonar \\         # For persistent cache
+                            -Dsonar.working.directory=/usr/src/.sonartmp # For temporary files during analysis
 
                         echo "Scan command finished. Checking for report-task.txt..."
                         if [ ! -f ".scannerwork/report-task.txt" ]; then
