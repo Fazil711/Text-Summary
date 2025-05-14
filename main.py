@@ -5,7 +5,7 @@ import os
 
 app = Flask(__name__)
 
-api_key = ("GEMINI_API_KEY")
+api_key = ("AIzaSyCdG20FhMAFU52KE7jDjMyo78koggfwMY4")
 if not api_key:
     raise ValueError("The GEMINI_API_KEY environment variable is not set.")
 
