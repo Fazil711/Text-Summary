@@ -51,7 +51,7 @@ pipeline {
                     docker run --rm \\
                         --network="host" \\
                         -e SONAR_HOST_URL="${env.SONAR_HOST_URL}" \\
-                        -e SONAR_LOGIN="${SONAR_LOGIN_TOKEN_FROM_CREDENTIALS}" \\
+                        -e SONAR_TOKEN="${SONAR_LOGIN_TOKEN_FROM_CREDENTIALS}" \\
                         -v "${pwd()}:/usr/src" \\
                         sonarsource/sonar-scanner-cli
                     """
